@@ -1,0 +1,80 @@
+@import "tailwindcss";
+
+@theme {
+  --color-paper: #fbfaf7;
+  --color-ink: #16181d;
+  --color-muted: #5c626b;
+  --color-hairline: #e3e0d8;
+  --color-accent: #0f5f5c;
+  --color-accent-soft: #e8f2f0;
+  --font-display: ui-serif, Georgia, Cambria, "Times New Roman", serif;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-paper text-ink antialiased;
+    font-family:
+      ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+  }
+
+  ::selection {
+    background: #d6e8e5;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .prose-report p {
+    @apply max-w-[68ch];
+  }
+
+  .rule {
+    @apply border-t border-hairline;
+  }
+
+  .card {
+    @apply border border-hairline bg-white;
+  }
+
+  .label-caps {
+    @apply text-[11px] font-semibold uppercase tracking-[0.14em] text-muted;
+  }
+
+  .link {
+    @apply text-accent underline decoration-accent/30 underline-offset-2 hover:decoration-accent;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 border px-5 py-2.5 text-sm font-semibold transition-colors;
+  }
+
+  .btn-primary {
+    @apply border-accent bg-accent text-white hover:bg-[#0b4a48];
+  }
+
+  .btn-quiet {
+    @apply border-hairline bg-white text-ink hover:bg-[#f4f2ec];
+  }
+
+  .field {
+    @apply w-full border border-hairline bg-white px-3 py-2 text-[15px] text-ink placeholder:text-muted/60 focus:border-accent focus:outline-none;
+  }
+}
