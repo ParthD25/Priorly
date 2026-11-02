@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Priorly private project and evidence workspace">
+  <title>Workspace — Priorly</title><link rel="stylesheet" href="/workspace.css">
+  <script src="/workspace.js" defer></script>
+</head>
+<body>
+<header class="topbar">
+  <a class="logo" href="/"><span class="logo-mark">P·</span><strong>priorly<span class="accent">.</span></strong></a>
+  <span class="header-label">FOUNDER WORKSPACE <span class="muted">/ PRIVATE BETA</span></span>
+  <div class="account"><span id="current-email"></span><button id="logout" class="ghost" hidden>Sign out</button></div>
+</header>
+<main>
+  <section class="auth" id="auth-screen">
+    <div class="auth-intro"><div class="eyebrow">MAKE INNOVATION DEFENSIBLE.</div><h1>Your ideas.<br><em>Under review.</em></h1><p>A dedicated workspace for startup differentiation, research evidence, and intellectual-property questions.</p><div class="privacy-note">This early beta is for non-confidential test ideas. Do not enter unpublished inventions, secrets or legal agreements until production security controls are verified.</div></div>
+    <div class="surface auth-card">
+      <div class="eyebrow">01 / ACCOUNT</div><h2 id="auth-heading">Welcome back.</h2><p class="hint" id="auth-subheading">Sign in to your Priorly research workspace.</p>
+      <form id="auth-form"><label for="email">Email address</label><input id="email" type="email" autocomplete="email" maxlength="254" required placeholder="you@company.com">
+      <label for="password">Password</label><input id="password" type="password" autocomplete="current-password" minlength="12" maxlength="128" required placeholder="At least 12 characters">
+      <button type="submit" id="auth-submit" class="primary">Sign in →</button></form>
+      <p class="error" role="alert" id="auth-error" hidden></p>
+      <button id="toggle-auth" type="button" class="text-action">New to Priorly? Create an account</button>
+    </div>
+  </section>
+
+  <section id="workspace-screen" hidden>
+    <div class="intro"><div><div class="eyebrow">YOUR WORKSPACE / 02</div><h1>Research that<br><em>holds up.</em></h1><p>Organize startup ideas, keep source-level evidence, and record human review decisions.</p></div><div class="intro-actions"><a class="secondary" href="/">← Public research preview</a><button id="new-project" class="primary">+ New project</button></div></div>
+    <div class="layout"><aside class="sidebar surface"><div class="aside-head"><span>PROJECTS</span><span id="project-count">0</span></div><div id="project-list" class="project-list"></div><p class="small">Only projects belonging to your account are returned by the API.</p></aside>
+    <div class="content-stack">
+      <div class="surface project-editor">
+        <div class="panel-heading"><span>PROJECT HYPOTHESIS</span><span id="project-status">NOT SAVED</span></div>
+        <form id="project-form">
+          <div class="grid2"><div><label for="project-title">Project name</label><input id="project-title" required minlength="2" maxlength="90" placeholder="What are you building?"></div><div><label for="project-audience">Intended customer</label><input id="project-audience" maxlength="180" placeholder="Who would pay for it?"></div></div>
+          <label for="project-problem">The problem</label><textarea id="project-problem" maxlength="1800" rows="3" placeholder="Who has the problem? Why does it matter?"></textarea>
+          <label for="project-solution">Your proposed technical approach</label><textarea id="project-solution" maxlength="2400" rows="4" placeholder="Describe the actual system or algorithm and what makes it different."></textarea>
+          <label for="project-keywords">Search terms</label><input id="project-keywords" maxlength="300" placeholder="e.g. chain of title, IP audit, patent landscape">
+          <div class="form-actions"><button class="primary" type="submit" id="save-project">Save project</button><button type="button" id="delete-project" class="danger" hidden>Delete project</button></div>
+        </form>
+      </div>
+      <div class="surface evidence-panel">
+        <div class="panel-heading"><span>RESEARCH & EVIDENCE</span><span id="research-status">NO RESEARCH YET</span></div>
+        <div class="research-actions"><button id="run-research" class="primary" disabled>Run research on saved project ↗</button><button id="export-brief" class="secondary" disabled>Export brief ↓</button></div>
+        <p class="disclaimer">This searches public OpenAlex publications and GitHub repositories. Matches are research leads, not proof of uniqueness or legal ownership. Search keywords leave Priorly and are sent to the providers.</p>
+        <div id="research-summary" class="notice">Save a project to begin source-backed research.</div>
+        <div id="evidence-list"></div>
+      </div>
+    </div></div>
+  </section>
+  <p role="status" id="toast" class="toast" hidden></p>
+</main><footer>PRIORLY / RESEARCH EVIDENCE SYSTEM <span>Not legal advice · Private beta development build</span></footer>
+</body></html>
