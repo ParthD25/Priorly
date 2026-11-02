@@ -22,7 +22,51 @@ function bind(){['ideaName','ideaProblem','ideaSolution','ideaAudience','ideaKey
 function drawChecks(){el('checkProgress').textContent=state.checked.length+' / '+checks.length+' RECORDED';el('checklist').innerHTML=checks.map(([a,b],i)=>'<label class="check-row"><input type="checkbox" data-check="'+i+'" '+(state.checked.includes(i)?'checked':'')+'><span><strong>'+escapeHTML(a)+'</strong><small>'+escapeHTML(b)+'</small></span></label>').join('');document.querySelectorAll('[data-check]').forEach(box=>box.addEventListener('change',e=>{const i=Number(e.target.dataset.check);state.checked=e.target.checked?[...new Set([...state.checked,i])]:state.checked.filter(n=>n!==i);save();el('checkProgress').textContent=state.checked.length+' / '+checks.length+' RECORDED'}))}
 function makeQuery(){const explicit=state.ideaKeywords.split(',').map(s=>s.trim()).filter(Boolean);if(explicit.length)return explicit.slice(0,3).join(' ');const raw=(state.ideaProblem+' '+state.ideaSolution).toLowerCase().replace(/[^a-z0-9\s-]/g,' ');const stop=new Set('the and with that this from into will would your their there have using being which where they into over than then when more also very able need solve based platform system software startup users user data their these those across'.split(' '));const words=raw.split(/\s+/).filter(w=>w.length>3&&!stop.has(w));return [...new Set(words)].slice(0,5).join(' ')}
 async function fetchJSON(url,timeout=10000){const ctrl=new AbortController();const timer=setTimeout(()=>ctrl.abort(),timeout);try{const r=await fetch(url,{signal:ctrl.signal,headers:{Accept:'application/json'}});if(!r.ok)throw Error('HTTP '+r.status);return await r.json()}finally{clearTimeout(timer)}}
-async function research(e){e.preventDefault();if(!el('idea-form').reportValidity())return;const btn=el('analyzeBtn');btn.disabled=true;btn.textContent='Researching public sources…';el('run-state').textContent='RESEARCHING';el('summary-empty').hidden=true;el('results').hidden=false;el('source-status').textContent='Searching OpenAlex and GitHub in parallel…';const q=makeQuery()||state.ideaName;const openalex='https://api.openalex.org/works?search='+encodeURIComponent(q)+'&per-page=8&select=id,title,publication_year,doi,primary_location,cited_by_count';const github='https://api.github.com/search/repositories?q='+encodeURIComponent(q+' in:name,description,readme')+'&sort=best-match&per_page=8';const [p,g]=await Promise.allSettled([fetchJSON(openalex),fetchJSON(github)]);state.papers=p.status==='fulfilled'?(p.value.results||[]).map(x=>({title:x.title||'Untitled',year:x.publication_year,url:safeUrl(x.doi||x.primary_location?.landing_page_url||x.id),cited:x.cited_by_count||0})):[];state.repos=g.status==='fulfilled'?(g.value.items||[]).map(x=>({title:x.full_name,description:x.description||'',url:safeUrl(x.html_url),stars:x.stargazers_count||0})):[];state.sourceErrors=[...(p.status==='rejected'?['OpenAlex: '+String(p.reason?.message||p.reason)]:[]),...(g.status==='rejected'?['GitHub: '+String(g.reason?.message||g.reason)]:[])];state.searchedAt=new Date().toISOString();state.query=q;save();renderResults();btn.disabled=false;btn.innerHTML='Run public research <span>↗</span>'}
+async function research(e){
+  e.preventDefault();
+  if(!el('idea-form').reportValidity()) return;
+  const btn=el('analyzeBtn');
+  btn.disabled=true;
+  btn.textContent='Researching public sources…';
+  el('run-state').textContent='RESEARCHING';
+  try{
+    const response=await fetch('/api/v1/research',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        ideaName:state.ideaName,
+        ideaProblem:state.ideaProblem,
+        ideaSolution:state.ideaSolution,
+        ideaAudience:state.ideaAudience,
+        ideaKeywords:state.ideaKeywords
+      })
+    });
+    const payload=await response.json().catch(()=>({}));
+    if(!response.ok) throw new Error(payload.error?.message||'Research request failed (HTTP '+response.status+').');
+    state.papers=payload.papers||[];
+    state.repos=payload.repos||[];
+    state.sourceErrors=payload.sourceErrors||[];
+    state.searchedAt=payload.retrievedAt;
+    state.query=payload.query;
+    save();
+    renderResults();
+  }catch(error){
+    const message='Research API unavailable: '+(error?.message||'Network failure')+'. Start the Node server with npm run dev.';
+    if(state.searchedAt){
+      renderResults();
+      el('source-status').classList.add('warning');
+      el('source-status').textContent=message+' Previous results remain displayed.';
+    }else{
+      el('results').hidden=true;
+      el('summary-empty').hidden=false;
+      el('summary-empty').querySelector('p').textContent=message;
+      el('run-state').textContent='UNAVAILABLE';
+    }
+  }finally{
+    btn.disabled=false;
+    btn.innerHTML='Run public research <span>↗</span>';
+  }
+}
 function renderResults(){const done=!!state.searchedAt;el('summary-empty').hidden=done;el('results').hidden=!done;el('run-state').textContent=done?'LAST RUN '+new Date(state.searchedAt).toLocaleDateString():'NOT STARTED';if(!done)return;el('source-status').classList.toggle('warning',state.sourceErrors.length>0);el('source-status').textContent=state.sourceErrors.length?'Some sources unavailable: '+state.sourceErrors.join(' | ')+'. No matches in a failed source does not mean the idea is new.':'Public sources searched. Inspect each match before classifying feature overlap.';el('paperCount').textContent=state.papers.length;el('repoCount').textContent=state.repos.length;el('papersLabel').textContent='('+state.papers.length+')';el('reposLabel').textContent='('+state.repos.length+')';el('papers').innerHTML=state.papers.length?state.papers.map(x=>'<div class="hit"><a href="'+escapeHTML(safeUrl(x.url))+'" target="_blank" rel="noopener noreferrer">'+escapeHTML(x.title)+'</a><div class="meta">Publication '+escapeHTML(x.year||'year unknown')+' · '+escapeHTML(x.cited)+' citations in OpenAlex</div></div>').join(''):'<p class="result-disclaimer">No records returned (this is not evidence of novelty).</p>';el('repos').innerHTML=state.repos.length?state.repos.map(x=>'<div class="hit"><a href="'+escapeHTML(safeUrl(x.url))+'" target="_blank" rel="noopener noreferrer">'+escapeHTML(x.title)+'</a><div class="meta">'+escapeHTML(x.description)+' · '+escapeHTML(x.stars)+' stars</div></div>').join(''):'<p class="result-disclaimer">No records returned (this is not evidence of novelty).</p>';const q=encodeURIComponent(state.query||state.ideaName);el('patentLinks').innerHTML='<a rel="noopener noreferrer" target="_blank" href="https://patents.google.com/xhr/query?url='+encodeURIComponent('q='+state.query)+'">Google Patents structured search ↗</a><a rel="noopener noreferrer" target="_blank" href="https://patents.google.com/?q='+q+'">Google Patents browser search ↗</a><a rel="noopener noreferrer" target="_blank" href="https://ppubs.uspto.gov/pubwebapp/">USPTO Patent Public Search ↗</a>'}
 function reportMD(){const lines=['# '+(state.ideaName||'Untitled startup')+' — Priorly evidence brief','', '**Generated:** '+new Date().toISOString(),'**Research run:** '+(state.searchedAt||'Not run'),'**Search keywords:** '+(state.query||'Not set'),'', '## Startup hypothesis','', '**Problem:** '+(state.ideaProblem||'Not provided'),'', '**Proposed solution:** '+(state.ideaSolution||'Not provided'),'', '**Target customer:** '+(state.ideaAudience||'Not provided'),'', '## Evidence — published research',''];if(!state.papers.length)lines.push('No verified records in this session. This does not prove novelty.');for(const x of state.papers)lines.push('- '+x.title+' ('+(x.year||'n.d.')+') — '+x.url);lines.push('','## Evidence — public repositories','');if(!state.repos.length)lines.push('No verified records in this session. This does not prove novelty.');for(const x of state.repos)lines.push('- '+x.title+' — '+x.url);lines.push('','## Retrieval limitations','',state.sourceErrors.length?state.sourceErrors.join('; '):'Search is limited to OpenAlex and GitHub query results. Coverage, recall and competitor feature parity have not been independently validated.','', '## Patent follow-up','', '- [Google Patents](https://patents.google.com/?q='+encodeURIComponent(state.query||state.ideaName)+')','- [USPTO Patent Public Search](https://ppubs.uspto.gov/pubwebapp/)','', '## IP ownership evidence (checked means reviewed, not cleared)','');checks.forEach(([a,b],i)=>lines.push('- ['+(state.checked.includes(i)?'x':' ')+'] '+a+' — '+b));lines.push('','### Founder notes','',state.ipNotes||'None provided','', '## Suggested next steps','', '1. Manually compare each closest competitor by feature and implementation.','2. Search patent claims and non-patent literature, including alternate terminology.','3. Obtain written IP assignments and confirm university/employer obligations.','4. Ask qualified IP counsel to review patent eligibility, prior art, ownership and freedom to operate separately.','5. Validate a customer problem and willingness to pay through interviews or pilots.','','---','Research organization only. Priorly does not determine legal ownership, patentability, non-infringement, or business viability.');return lines.join('\n')}
 function download(name,type,content){const blob=new Blob([content],{type:type+';charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000)}
