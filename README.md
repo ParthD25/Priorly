@@ -1,40 +1,39 @@
 # Priorly
 
-**Evidence-first startup differentiation, technology research and IP ownership readiness.**
+Priorly is an evidence-first research workspace for startup differentiation, technical overlap and IP ownership readiness. It is not a novelty scorer or substitute for patent counsel.
 
-Priorly is being developed incrementally into a full product, not a novelty-score generator. It gathers public research and code references, helps founders organize ownership evidence and exports a transparent brief. It does NOT determine patentability, ownership, freedom to operate, legal compliance or business viability.
+## Implemented
+
+Phase 1: OpenAlex/GitHub public search, same-origin Node research API, source timestamps, partial provider failure handling and test CI.
+
+Phase 2: Account sign-up and sign-in with hashed passwords, HttpOnly cookies, persistent SQLite projects, saved research runs, deduplicated evidence, human review classifications, cross-user authorization and source-linked Markdown export.
 
 ## Run locally
 
-Requires Node.js 22 or later; no npm dependencies or API keys required for basic public research.
+Requires Node.js 22. No third-party npm dependencies.
 
-1. Run: npm run dev
-2. Open: http://127.0.0.1:8080
-3. Check liveness: http://127.0.0.1:8080/api/v1/health
-4. Run tests: npm test
+- Start: npm run dev
+- Founder workspace: http://127.0.0.1:8080/workspace.html
+- Public research preview: http://127.0.0.1:8080
+- Tests: npm test
+- Syntax: npm run check
 
-Optionally set GITHUB_TOKEN in your server environment for a higher GitHub API rate limit. Never put a token in a browser file or commit it.
+Default DB is .data/priorly.sqlite; override using PRIO RLY_DB_PATH with the space removed, i.e. the environment name consists of PRIORLY followed by _DB_PATH. Optional server-only GITHUB_TOKEN can improve public API rate limits. Bind to localhost by default; do not expose this build to the public internet.
 
-The static frontend must be served by the Node server for research to work. GitHub Pages can render the interface but cannot host the /api/v1/research backend.
+## API
 
-## Implemented in this increment
+- POST /api/v1/auth/register, /api/v1/auth/login, /api/v1/auth/logout
+- GET /api/v1/auth/me
+- GET/POST /api/v1/projects
+- GET/PUT/DELETE /api/v1/projects/:id
+- GET/POST /api/v1/projects/:id/research
+- GET /api/v1/projects/:id/evidence
+- PATCH /api/v1/projects/:id/evidence/:evidenceId
+- POST /api/v1/research (existing one-off public preview)
+- GET /api/v1/health
 
-- A same-origin Node HTTP API for research; validated inputs, maximum request size, fixed-source requests, timeouts, source-aware error reporting and baseline security headers.
-- OpenAlex and GitHub provider normalization with source links and retrieval timestamps.
-- A research frontend that consumes the backend instead of calling external APIs directly.
-- Built-in Node tests and GitHub Actions workflow.
-- Idea review, ownership checklist and Markdown/JSON export from the prior static preview.
+All project endpoints check the owner identity server-side. Search results are research leads, not patent claims or legal findings. No confidential contracts, secret code, unpublished inventions or sensitive personal data should be uploaded to this development build.
 
-## Limitations
+## Planning and architecture
 
-This is still an **unauthenticated, non-production research preview**. No durable database or user accounts, no automated claim-by-claim patent search, no authoritative competitor analysis, no model-driven invention extraction and no qualified legal review. Server rate limits are in-memory only. The browser stores draft data in localStorage, which is inappropriate for confidential inventions and contracts; do not paste confidential material. Search terms are transmitted to OpenAlex and GitHub when research is run. Search results are not legal conclusions.
-
-See docs/ROADMAP.md and docs/ADR-0001.md for sequencing, responsibilities, security boundaries and acceptance criteria.
-
-## API quick example
-
-POST /api/v1/research with application/json and keys ideaName, ideaProblem, ideaSolution, ideaAudience, ideaKeywords. Results have separate sourceStatus values; unavailable providers are explicitly flagged rather than treated as a negative novelty result.
-
-## Legal
-
-Priorly provides research organization, not legal advice. Neither a positive search hit nor the absence of hits establishes novelty, inventorship, patentability, freedom to operate, or legal title.
+See docs/ROADMAP.md, docs/ADR-0001.md, and docs/ADR-0002.md. Next: dedicated managed database and identity, encrypted storage, reviewed security model, real patent claim data, source-to-claim mappings and independent expert validation.

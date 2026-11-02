@@ -16,10 +16,6 @@ jobs:
         with:
           node-version: "22"
       - name: Syntax checks
-        run: |
-          node --check server/research.mjs
-          node --check server/app.mjs
-          node --check server/index.mjs
-          node --check app.js
-      - name: Unit and HTTP tests
+        run: npm run check
+      - name: Unit, persistence and HTTP tests
         run: npm test
