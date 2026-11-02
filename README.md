@@ -18,7 +18,7 @@ Requires Node.js 22. No third-party npm dependencies.
 - Tests: npm test
 - Syntax: npm run check
 
-Default DB is .data/priorly.sqlite; override using PRIO RLY_DB_PATH with the space removed, i.e. the environment name consists of PRIORLY followed by _DB_PATH. Optional server-only GITHUB_TOKEN can improve public API rate limits. Bind to localhost by default; do not expose this build to the public internet.
+Default DB is .data/priorly.sqlite; override using PRIORLY_DB_PATH. Optional server-only GITHUB_TOKEN can improve public API rate limits. Bind to localhost by default; do not expose this build to the public internet.
 
 ## API
 

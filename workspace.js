@@ -71,7 +71,7 @@ const classes=["unreviewed","overlap","differentiated","needs-review","irrelevan
 function drawEvidence(){
   const reviewed=evidence.filter(x=>x.classification!=="unreviewed").length;
   byId("research-status").textContent=evidence.length+" SOURCES / "+reviewed+" REVIEWED";
-  if(!runs.length)byId("research-summary").textContent="No research runs yet. Your results will be saved here.";
+  if(!runs.length){byId("research-summary").classList.remove("warn");byId("research-summary").textContent="No research runs yet. Your results will be saved here.";}
   else{
     const recent=runs[0].result;
     const errors=recent.sourceErrors||[];
@@ -121,6 +121,7 @@ byId("project-list").onclick=async e=>{
   fillProject(p);
   try{await loadEvidence()}catch(err){toast(err.message)}
 };
+byId("project-form").addEventListener("input",()=>{byId("project-status").textContent="UNSAVED CHANGES";byId("run-research").disabled=true});
 byId("project-form").onsubmit=async e=>{
   e.preventDefault();const button=byId("save-project");button.disabled=true;
   try{

@@ -1,5 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, chmodSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { randomBytes, randomUUID, scryptSync, createHash, timingSafeEqual } from "node:crypto";
 
@@ -23,6 +23,7 @@ const TTL = 7 * 24 * 60 * 60 * 1000;
 export function createStore({ path = ".data/priorly.sqlite", now = () => Date.now() } = {}) {
   if (path !== ":memory:") mkdirSync(dirname(resolve(path)), { recursive: true, mode: 0o700 });
   const db = new DatabaseSync(path);
+  if (path !== ":memory:") chmodSync(path, 0o600);
   db.exec("PRAGMA foreign_keys=ON; PRAGMA busy_timeout=3000;");
   if (path !== ":memory:") db.exec("PRAGMA journal_mode=WAL;");
   db.exec([
