@@ -150,6 +150,25 @@ export function createApp({
       if(parts.length===6&&parts[4]==="evidence"&&req.method==="PATCH"){
         return send(res,200,{evidence:store.classifyEvidence(user.id,projectId,parts[5],await readBody(req))});
       }
+      if(parts.length===5&&parts[4]==="evidence"&&req.method==="POST"){
+        return send(res,201,{evidence:store.importEvidence(user.id,projectId,await readBody(req))});
+      }
+      if(parts.length===5&&parts[4]==="claims"){
+        if(req.method==="GET")return send(res,200,{claims:store.listClaims(user.id,projectId)});
+        if(req.method==="POST")return send(res,201,{claim:store.createClaim(user.id,projectId,await readBody(req))});
+      }
+      if(parts.length===6&&parts[4]==="claims"){
+        if(req.method==="PUT")return send(res,200,{claim:store.updateClaim(user.id,projectId,parts[5],await readBody(req))});
+        if(req.method==="DELETE"){store.deleteClaim(user.id,projectId,parts[5]);return send(res,200,{ok:true});}
+      }
+      if(parts.length===7&&parts[4]==="claims"&&parts[6]==="sources"){
+        if(req.method==="GET")return send(res,200,{links:store.listClaimLinks(user.id,projectId,parts[5])});
+        if(req.method==="POST")return send(res,201,{link:store.linkClaimSource(user.id,projectId,parts[5],await readBody(req))});
+      }
+      if(parts.length===8&&parts[4]==="claims"&&parts[6]==="sources"&&req.method==="DELETE"){
+        store.unlinkClaimSource(user.id,projectId,parts[5],parts[7]);
+        return send(res,200,{ok:true});
+      }
       return send(res,405,{error:{code:"METHOD_NOT_ALLOWED",message:"Method not allowed."}});
     }catch(e){
       if(e instanceof InputError)return send(res,400,{error:{code:"INVALID_IDEA",message:e.message}});

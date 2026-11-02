@@ -34,6 +34,8 @@ Default DB is .data/priorly.sqlite; override using PRIORLY_DB_PATH. Optional ser
 
 All project endpoints check the owner identity server-side. Search results are research leads, not patent claims or legal findings. No confidential contracts, secret code, unpublished inventions or sensitive personal data should be uploaded to this development build.
 
+Phase 3 (first slice): claim-level comparisons connect a stated technical mechanism to reviewed public-source evidence, with manually attached patent/company/article links, human relation labels and auditable notes. The attached patent links are NOT independently validated, and this is not a patentability decision.
+
 ## Planning and architecture
 
-See docs/ROADMAP.md, docs/ADR-0001.md, and docs/ADR-0002.md. Next: dedicated managed database and identity, encrypted storage, reviewed security model, real patent claim data, source-to-claim mappings and independent expert validation.
+See docs/ROADMAP.md, docs/ADR-0001.md, docs/ADR-0002.md, and docs/ADR-0003.md. Next: dedicated managed database and identity, encrypted storage, reviewed security model, real patent claim data, source-to-claim mappings and independent expert validation.

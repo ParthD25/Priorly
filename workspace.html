@@ -45,6 +45,26 @@
         <p class="disclaimer">This searches public OpenAlex publications and GitHub repositories. Matches are research leads, not proof of uniqueness or legal ownership. Search keywords leave Priorly and are sent to the providers.</p>
         <div id="research-summary" class="notice">Save a project to begin source-backed research.</div>
         <div id="evidence-list"></div>
+        <form id="source-form" class="sub-form">
+          <h3>Attach a published source manually</h3>
+          <p class="small">Use an original patent publication, company product page, or technical paper. Manually attached sources are unverified until reviewed.</p>
+          <div class="grid2"><div><label for="source-title">Source title</label><input id="source-title" required minlength="5" maxlength="240" placeholder="Patent publication or product documentation"></div>
+          <div><label for="source-type">Source type</label><select id="source-type"><option>Patent publication</option><option>Company documentation</option><option>Research publication</option><option>Other documentation</option></select></div></div>
+          <label for="source-url">Original HTTPS URL</label><input id="source-url" type="url" required maxlength="1200" placeholder="https://patents.google.com/patent/...">
+          <button type="submit" class="secondary" id="source-add" disabled>Attach source</button>
+        </form>
+      </div>
+      <div class="surface claim-panel">
+        <div class="panel-heading"><span>TECHNICAL CLAIMS & SOURCE COMPARISONS</span><span id="claim-status">0 CLAIMS</span></div>
+        <p class="disclaimer">Define each specific mechanism or capability separately. A linked source can show overlap, a possible difference, or uncertainty. These are human research notes, not novelty or legal determinations.</p>
+        <form id="claim-form" class="sub-form">
+          <label for="claim-description">Your technical claim</label>
+          <input id="claim-description" minlength="10" maxlength="350" required placeholder="e.g. Qualification-aware replacement scheduling with auditable approvals">
+          <label for="claim-mechanism">Implementation details and technical improvement</label>
+          <textarea id="claim-mechanism" maxlength="1800" rows="3" placeholder="Describe the algorithm, constraints, inputs, and measurable improvement."></textarea>
+          <button type="submit" id="claim-add" class="primary" disabled>Add technical claim</button>
+        </form>
+        <div id="claim-list"></div>
       </div>
     </div></div>
   </section>

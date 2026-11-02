@@ -35,7 +35,10 @@ export function createStore({ path = ".data/priorly.sqlite", now = () => Date.no
     "CREATE TABLE IF NOT EXISTS research_runs (id TEXT PRIMARY KEY,project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,result_json TEXT NOT NULL,created_at TEXT NOT NULL);",
     "CREATE INDEX IF NOT EXISTS idx_runs_project ON research_runs(project_id,created_at);",
     "CREATE TABLE IF NOT EXISTS evidence (id TEXT PRIMARY KEY,project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,source TEXT NOT NULL,source_id TEXT NOT NULL,title TEXT NOT NULL,url TEXT NOT NULL,classification TEXT NOT NULL DEFAULT 'unreviewed',note TEXT NOT NULL DEFAULT '',retrieved_at TEXT NOT NULL,updated_at TEXT NOT NULL,UNIQUE(project_id,source,source_id));",
-    "CREATE INDEX IF NOT EXISTS idx_evidence_project ON evidence(project_id);"
+    "CREATE INDEX IF NOT EXISTS idx_evidence_project ON evidence(project_id);",
+    "CREATE TABLE IF NOT EXISTS claims (id TEXT PRIMARY KEY,project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,description TEXT NOT NULL,mechanism TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL,updated_at TEXT NOT NULL);",
+    "CREATE INDEX IF NOT EXISTS idx_claims_project ON claims(project_id);",
+    "CREATE TABLE IF NOT EXISTS claim_sources (claim_id TEXT NOT NULL REFERENCES claims(id) ON DELETE CASCADE,evidence_id TEXT NOT NULL REFERENCES evidence(id) ON DELETE CASCADE,relation TEXT NOT NULL,source_excerpt TEXT NOT NULL DEFAULT '',rationale TEXT NOT NULL DEFAULT '',updated_at TEXT NOT NULL,PRIMARY KEY(claim_id,evidence_id));"
   ].join("\n"));
   const nowISO = () => new Date(now()).toISOString();
   function publicUser(row) {
@@ -157,9 +160,88 @@ export function createStore({ path = ".data/priorly.sqlite", now = () => Date.no
     if(!result.changes)throw new AppError(404,"NOT_FOUND","Evidence not found.");
     return listEvidence(userId,projectId).find(x=>x.id===evidenceId);
   }
+  function importEvidence(userId,projectId,body) {
+    requireProject(userId,projectId);
+    if(!body||typeof body!=="object")throw bad("Expected a source object.");
+    const allowed=["Patent publication","Company documentation","Research publication","Other documentation"];
+    if(!allowed.includes(body.source))throw bad("Invalid source type.");
+    const title=string(body.title,240), url=string(body.url,1200);
+    if(title.length<5)throw bad("Source title must contain at least five characters.");
+    try { const parsed=new URL(url); if(parsed.protocol!=="https:"||!parsed.hostname.includes("."))throw Error(); }
+    catch { throw bad("Source URL must be a public HTTPS link."); }
+    const timestamp=nowISO();
+    try {
+      db.prepare("INSERT INTO evidence (id,project_id,source,source_id,title,url,classification,note,retrieved_at,updated_at) VALUES (?,?,?,?,?,?,'unreviewed','Manually provided; source not independently verified',?,?)")
+        .run(randomUUID(),projectId,body.source,url,title,url,timestamp,timestamp);
+    } catch(e) {
+      if(String(e.message).includes("UNIQUE"))throw new AppError(409,"SOURCE_EXISTS","This source is already attached to the project.");
+      throw e;
+    }
+    return listEvidence(userId,projectId).find(x=>x.source===body.source&&x.sourceId===url);
+  }
+  function requireClaim(userId,projectId,claimId) {
+    requireProject(userId,projectId);
+    const claim=db.prepare("SELECT * FROM claims WHERE id=? AND project_id=?").get(claimId,projectId);
+    if(!claim)throw new AppError(404,"NOT_FOUND","Technical claim not found.");
+    return claim;
+  }
+  function claimFields(body) {
+    if(!body||typeof body!=="object")throw bad("Expected a claim object.");
+    const description=string(body.description,350),mechanism=string(body.mechanism||"",1800);
+    if(description.length<10)throw bad("A technical claim needs at least ten characters.");
+    return {description,mechanism};
+  }
+  function listClaimLinks(userId,projectId,claimId) {
+    requireClaim(userId,projectId,claimId);
+    return db.prepare("SELECT cs.evidence_id,cs.relation,cs.source_excerpt,cs.rationale,cs.updated_at,e.title,e.url,e.source FROM claim_sources cs JOIN evidence e ON e.id=cs.evidence_id WHERE cs.claim_id=? AND e.project_id=? ORDER BY cs.updated_at DESC")
+      .all(claimId,projectId).map(x=>({evidenceId:x.evidence_id,relation:x.relation,sourceExcerpt:x.source_excerpt,
+        rationale:x.rationale,updatedAt:x.updated_at,title:x.title,url:x.url,source:x.source}));
+  }
+  function listClaims(userId,projectId) {
+    requireProject(userId,projectId);
+    return db.prepare("SELECT * FROM claims WHERE project_id=? ORDER BY created_at ASC LIMIT 60").all(projectId)
+      .map(x=>({id:x.id,description:x.description,mechanism:x.mechanism,createdAt:x.created_at,
+        updatedAt:x.updated_at,links:listClaimLinks(userId,projectId,x.id)}));
+  }
+  function createClaim(userId,projectId,body) {
+    requireProject(userId,projectId);
+    const p=claimFields(body),id=randomUUID(),timestamp=nowISO();
+    db.prepare("INSERT INTO claims (id,project_id,description,mechanism,created_at,updated_at) VALUES (?,?,?,?,?,?)")
+      .run(id,projectId,p.description,p.mechanism,timestamp,timestamp);
+    return listClaims(userId,projectId).find(x=>x.id===id);
+  }
+  function updateClaim(userId,projectId,id,body) {
+    requireClaim(userId,projectId,id);
+    const p=claimFields(body);
+    db.prepare("UPDATE claims SET description=?,mechanism=?,updated_at=? WHERE id=? AND project_id=?")
+      .run(p.description,p.mechanism,nowISO(),id,projectId);
+    return listClaims(userId,projectId).find(x=>x.id===id);
+  }
+  function deleteClaim(userId,projectId,id) {
+    requireClaim(userId,projectId,id);
+    db.prepare("DELETE FROM claims WHERE id=? AND project_id=?").run(id,projectId);
+  }
+  function linkClaimSource(userId,projectId,claimId,body) {
+    requireClaim(userId,projectId,claimId);
+    if(!body||typeof body!=="object")throw bad("Expected evidence mapping.");
+    const evidenceId=string(body.evidenceId,120);
+    const source=db.prepare("SELECT id FROM evidence WHERE id=? AND project_id=?").get(evidenceId,projectId);
+    if(!source)throw new AppError(404,"NOT_FOUND","Evidence source not found.");
+    const allowed=["overlap","possible-difference","background","uncertain"];
+    if(!allowed.includes(body.relation))throw bad("Invalid comparison relation.");
+    const sourceExcerpt=string(body.sourceExcerpt||"",1000),rationale=string(body.rationale||"",1500);
+    db.prepare("INSERT INTO claim_sources (claim_id,evidence_id,relation,source_excerpt,rationale,updated_at) VALUES (?,?,?,?,?,?) ON CONFLICT(claim_id,evidence_id) DO UPDATE SET relation=excluded.relation,source_excerpt=excluded.source_excerpt,rationale=excluded.rationale,updated_at=excluded.updated_at")
+      .run(claimId,evidenceId,body.relation,sourceExcerpt,rationale,nowISO());
+    return listClaimLinks(userId,projectId,claimId).find(x=>x.evidenceId===evidenceId);
+  }
+  function unlinkClaimSource(userId,projectId,claimId,evidenceId) {
+    requireClaim(userId,projectId,claimId);
+    const row=db.prepare("DELETE FROM claim_sources WHERE claim_id=? AND evidence_id=?").run(claimId,evidenceId);
+    if(!row.changes)throw new AppError(404,"NOT_FOUND","Claim evidence link not found.");
+  }
   function deleteAccount(userId) {
     db.prepare("DELETE FROM users WHERE id=?").run(userId);
   }
   return {db,signUp,signIn,userForToken,signOut,createProject,listProjects,getProject,updateProject,
-    deleteProject,listRuns,storeRun,listEvidence,classifyEvidence,deleteAccount};
+    deleteProject,listRuns,storeRun,listEvidence,classifyEvidence,importEvidence,listClaims,createClaim,updateClaim,deleteClaim,listClaimLinks,linkClaimSource,unlinkClaimSource,deleteAccount};
 }
