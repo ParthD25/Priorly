@@ -7,9 +7,10 @@ import { reportStorageKey } from "~/lib/client-store";
 import { BLUECORE_EXAMPLE, type Intake } from "~/lib/types";
 
 export const Route = createFileRoute("/analyze")({
-  validateSearch: (search: Record<string, unknown>): { example?: boolean } => ({
-    example: search.example === true || search.example === "1" || search.example === "true",
-  }),
+  validateSearch: (search: Record<string, unknown>): { example?: boolean } => {
+    const example = search.example === true || search.example === "1" || search.example === "true";
+    return example ? { example: true } : {};
+  },
   head: () => ({
     meta: [
       { title: "Analyze an idea — Priorly" },
@@ -287,8 +288,8 @@ function SourceStatusPanel({ status }: { status: RuntimeStatus | null }) {
     },
     {
       label: "Report storage",
-      on: Boolean(status && status.storage === "mongodb"),
-      off: "in-memory for this server process — share links work while it is running",
+      on: Boolean(status && status.storage === "postgres"),
+      off: "memory-only for this server process — share links stop working on restart",
     },
   ];
 

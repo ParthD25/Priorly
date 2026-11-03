@@ -2,7 +2,7 @@
 //
 // Every stage degrades honestly. Nothing in this file invents a source, a date or
 // a company: if a connector is not connected, the report says so.
-import { randomBytes } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import type {
   AnalysisReport,
   CapabilityFinding,
@@ -287,7 +287,8 @@ function buildLimitations(llm: boolean): string[] {
 }
 
 function newReportId(): string {
-  return randomBytes(7).toString("hex");
+  // The report id is the research_runs.id, which is a uuid column in Postgres.
+  return randomUUID();
 }
 
 export async function runAnalysis(rawIntake: Intake): Promise<AnalysisReport> {
@@ -459,14 +460,17 @@ export async function runAnalysis(rawIntake: Intake): Promise<AnalysisReport> {
     queryLog,
     counts,
     storage: "memory",
+    storageError: null,
     durationMs: Date.now() - started,
   };
 
+  // The page reports where the report actually ended up, not where we hoped.
   const saved = await saveReport(report);
   report.storage = saved.storage;
+  report.storageError = saved.error;
   return report;
 }
 
-export function storageNote(kind: "memory" | "mongodb"): string {
+export function storageNote(kind: "memory" | "postgres"): string {
   return storageDescription(kind);
 }

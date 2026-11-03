@@ -103,7 +103,10 @@ export interface AnalysisReport {
     potentialDifferentiation: number;
     insufficientEvidence: number;
   };
-  storage: "memory" | "mongodb";
+  /** Where this report actually lives: durable Postgres, or this server's memory. */
+  storage: "memory" | "postgres";
+  /** Set only when a Postgres write was attempted and failed. Never a secret. */
+  storageError?: string | null;
   /** Milliseconds the analysis took. */
   durationMs: number;
 }

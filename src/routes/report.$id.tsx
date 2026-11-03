@@ -8,14 +8,17 @@ import {
   SectionHeading,
   SourceTypeTag,
 } from "~/components/ui";
-import { fetchReport } from "~/lib/api";
+import { fetchReport, fetchStorageKind } from "~/lib/api";
 import { readStoredReport } from "~/lib/client-store";
 import type { AnalysisReport, CapabilityFinding, EvidenceSource } from "~/lib/types";
 
 export const Route = createFileRoute("/report/$id")({
   loader: async ({ params }) => {
-    const report = await fetchReport({ data: { id: params.id } });
-    return { report };
+    const [report, storage] = await Promise.all([
+      fetchReport({ data: { id: params.id } }),
+      fetchStorageKind(),
+    ]);
+    return { report, storage };
   },
   head: ({ loaderData }) => ({
     meta: [
@@ -37,7 +40,7 @@ function formatTimestamp(iso: string): string {
 
 function ReportPage() {
   const { id } = Route.useParams();
-  const { report: loaded } = Route.useLoaderData();
+  const { report: loaded, storage } = Route.useLoaderData();
   const [fallback, setFallback] = useState<AnalysisReport | null>(null);
 
   useEffect(() => {
@@ -52,11 +55,12 @@ function ReportPage() {
         <div className="mx-auto max-w-2xl px-5 py-20 sm:px-8">
           <p className="label-caps">Report not found</p>
           <h1 className="mt-2 font-display text-3xl font-semibold">
-            This report is no longer available
+            This report is not available
           </h1>
           <p className="mt-3 text-[15px] text-muted">
-            Reports are kept in this server&apos;s memory for a few hours, and this link has either
-            expired or never existed. No database is connected yet, so links are not permanent.
+            {storage === "postgres"
+              ? "No report is stored under this link. Reports are saved in Postgres, so a link that worked before still works — this one does not exist. Check the address, or run a new analysis."
+              : "No report is stored under this link. Reports are currently held in this server's memory only, so they are cleared whenever the server restarts."}
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
             <Link to="/analyze" className="btn btn-primary no-underline">
@@ -113,7 +117,7 @@ function ReportBody({ report }: { report: AnalysisReport }) {
         </header>
 
         <ModeBanner report={report} />
-        <ShareBox id={report.id} />
+        <ShareBox id={report.id} storage={report.storage} />
         <Scoreboard report={report} />
 
         <section className="mt-12">
@@ -255,14 +259,22 @@ function ModeBanner({ report }: { report: AnalysisReport }) {
       <p className="mt-2 text-[12px] text-muted">
         Decomposition: {report.decomposition.method === "llm" ? "model-assisted" : "your own wording, split into clauses"} ·{" "}
         {report.decomposition.note} · Storage:{" "}
-        {report.storage === "mongodb" ? "MongoDB" : "this server's memory"} · Took{" "}
-        {(report.durationMs / 1000).toFixed(1)}s.
+        {report.storage === "postgres"
+          ? "saved in Postgres — durable"
+          : "this server's memory only — not durable"}{" "}
+        · Took {(report.durationMs / 1000).toFixed(1)}s.
       </p>
+      {report.storage === "memory" && report.storageError ? (
+        <p className="mt-1 text-[12px] text-muted">
+          The durable write failed ({report.storageError}), so this report exists only in this
+          server&apos;s memory.
+        </p>
+      ) : null}
     </div>
   );
 }
 
-function ShareBox({ id }: { id: string }) {
+function ShareBox({ id, storage }: { id: string; storage: AnalysisReport["storage"] }) {
   const [url, setUrl] = useState("");
   const [copied, setCopied] = useState(false);
 
@@ -285,6 +297,11 @@ function ShareBox({ id }: { id: string }) {
       <div className="min-w-0">
         <p className="label-caps">Share link</p>
         <p className="truncate font-mono text-[13px] text-muted">{url || "…"}</p>
+        <p className="mt-1 text-[12px] text-muted">
+          {storage === "postgres"
+            ? "Saved in Postgres — this link keeps working after a restart or a new deploy."
+            : "Memory-only — this link stops working when the server restarts."}
+        </p>
       </div>
       <button type="button" onClick={copy} className="btn btn-quiet shrink-0">
         {copied ? "Copied" : "Copy link"}

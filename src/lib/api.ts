@@ -26,28 +26,36 @@ export const analyzeIdea = createServerFn({ method: "POST" })
 export const fetchReport = createServerFn({ method: "GET" })
   .validator((data: { id: string }) => data)
   .handler(async ({ data }): Promise<AnalysisReport | null> => {
-    const { getReport } = await import("../server/store.server");
-    return getReport(data.id);
+    const { loadReport } = await import("../server/store.server");
+    return loadReport(data.id);
   });
 
 export interface RuntimeStatus {
   llm: boolean;
   patents: boolean;
   competitors: boolean;
-  storage: "memory" | "mongodb";
+  storage: "memory" | "postgres";
 }
+
+/** Which storage this server is actually using. No network call, no secrets. */
+export const fetchStorageKind = createServerFn({ method: "GET" }).handler(
+  async (): Promise<"memory" | "postgres"> => {
+    const { storageKind } = await import("../server/store.server");
+    return storageKind();
+  },
+);
 
 export const fetchRuntimeStatus = createServerFn({ method: "GET" }).handler(
   async (): Promise<RuntimeStatus> => {
     const { isLlmConfigured } = await import("../server/llm.server");
     const { patentConnector } = await import("../server/patents.server");
     const { isWebSearchConnected } = await import("../server/websearch.server");
-    const { mongoConfigured } = await import("../server/store.server");
+    const { storageKind } = await import("../server/store.server");
     return {
       llm: isLlmConfigured(),
       patents: patentConnector.isConnected(),
       competitors: isWebSearchConnected(),
-      storage: mongoConfigured() ? "mongodb" : "memory",
+      storage: storageKind(),
     };
   },
 );
