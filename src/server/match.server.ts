@@ -174,9 +174,16 @@ export function classifyLexically(
     };
   }
 
+  const why =
+    top.anchorMatches.length === 0 && top.distinctiveMatches >= 2
+      ? `The closest source ("${top.source.title.slice(0, 100)}") shares wording but comes from a different field, so we do not treat it as related work.`
+      : top.distinctiveMatches <= 1
+        ? `The closest source shares only generic wording (${top.matchedTerms.slice(0, 4).join(", ") || "none"}), which is not evidence about your mechanism.`
+        : `The closest source overlaps on ${String(top.distinctiveMatches)} terms but does not describe this mechanism closely enough.`;
+
   return {
     classification: "INSUFFICIENT_EVIDENCE",
-    summary: `The ${String(sources.length)} retrieved sources are only loosely related (best term overlap: ${(top.score * 100).toFixed(0)}%, ${String(top.distinctiveMatches)} distinctive term${top.distinctiveMatches === 1 ? "" : "s"} matched). Not enough to say either way.`,
+    summary: `${String(sources.length)} source${sources.length === 1 ? "" : "s"} retrieved; nothing strong enough to classify. ${why} Treat this capability as unknown, not as clear.`,
     matches,
   };
 }

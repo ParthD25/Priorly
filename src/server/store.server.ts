@@ -91,6 +91,16 @@ function evidenceSourceId(source: EvidenceSource): string {
   return trim(tail || key, 500);
 }
 
+/**
+ * The schema's url column only accepts https. Connectors occasionally return an
+ * http:// link for the same document (e.g. a handle.net redirect); upgrading the
+ * scheme keeps the identical resource addressable rather than dropping the row.
+ */
+function evidenceUrl(url: string | undefined): string {
+  const value = trim(url, 2000).trim();
+  return /^http:\/\//i.test(value) ? `https://${value.slice("http://".length)}` : value;
+}
+
 function evidenceNote(source: EvidenceSource): string {
   const parts: string[] = [];
   if (source.publisher) parts.push(source.publisher);
@@ -173,7 +183,7 @@ function buildRows(report: AnalysisReport) {
       source: sourceType,
       source_id: sourceId,
       title: trim(source.title, 2000) || "(no title returned by the source)",
-      url: trim(source.url, 2000),
+      url: evidenceUrl(source.url),
       // The classification belongs to a claim/source pair, not to the source on
       // its own, so the evidence row stays unreviewed and the link row carries
       // the relation. Anything else would be a judgement we did not make.
