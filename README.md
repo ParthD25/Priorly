@@ -53,3 +53,9 @@ Run with `PRIORLY_BACKEND=supabase`, `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KE
 Prysm Style currently hosts only the six `priorly_*` prefixed staging tables; its Auth signup trigger adds users to fashion-profile tables, so **the Supabase application adapter deliberately refuses to connect to Prysm's Auth environment**. This preserves separation of user accounts. Neither a new subscription nor production hosting was provisioned.
 
 See `docs/ADR-0005.md` and `.env.example` for the remaining deployment gates.
+
+## Reusing the existing Prysm Style database (explicitly authorized)
+
+Priorly now supports local development against the **existing** Supabase project. Copy `.env.example` to `.env`, fill in the project's publishable key, then run `npm run dev:shared`. Open `http://127.0.0.1:8080/workspace.html` and sign in with **an existing** Supabase Auth account. All application tables are prefixed `priorly_*` and have row-level ownership rules. No service-role credentials belong in frontend files or the repository.
+
+**Important:** Authentication is shared with Prysm Style. Prysm has an automatic fashion-profile creation trigger for new Auth users, so Priorly registration is intentionally disabled in this shared mode, including at the API layer. Existing Prysm login credentials work, but no new Priorly user should sign up via this shared Auth service. This is an explicit, local development configuration—not an independently secured production service. See `docs/ADR-0006.md`.

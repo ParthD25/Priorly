@@ -63,9 +63,45 @@ function fixture(){
   const store=createSupabaseStore({url:"https://priorlytest.supabase.co",key:"sb_publishable_test",fetchImpl});
   return {store,calls};
 }
-test("shared Prysm Style Auth is explicitly denied",()=>{
-  assert.throws(()=>createSupabaseStore({
-    url:"https://dpcpbebiylwozvkjubeq.supabase.co",key:"sb_publishable_test"}),/schema staging ONLY/);
+test("shared Prysm Supabase requires opt-in and disables registration, while allowing existing login",async()=>{
+  const original=process.env.PRIORLY_USE_SHARED_SUPABASE;
+  delete process.env.PRIORLY_USE_SHARED_SUPABASE;
+  try {
+    assert.throws(()=>createSupabaseStore({
+      url:"https://dpcpbebiylwozvkjubeq.supabase.co",key:"sb_publishable_test"}),/explicit local opt-in/);
+    process.env.PRIORLY_USE_SHARED_SUPABASE="true";
+    const calls=[];
+    const shared=createSupabaseStore({
+      url:"https://dpcpbebiylwozvkjubeq.supabase.co",
+      key:"sb_publishable_test",
+      fetchImpl:async(url,opts)=>{
+        calls.push({url,method:opts.method});
+        if(url.includes("/auth/v1/token?grant_type=password"))return json({
+          user:{id:UUID,email:"existing@example.com"},access_token:"access-a",refresh_token:"refresh-a"
+        });
+        throw Error("Only existing-account login should be attempted");
+      }
+    });
+    assert.equal(shared.sharedAuth,true);
+    assert.equal(shared.canRegister,false);
+    await assert.rejects(shared.signUp("new@example.com","very-long-password"),e=>e.status===403 && e.code==="REGISTRATION_DISABLED");
+    const existing=await shared.signIn("existing@example.com","very-long-password");
+    assert.equal(existing.user.email,"existing@example.com");
+    assert.equal(calls.length,1);
+    const server=createApp({store:shared,service:async()=>({papers:[],repos:[]})});
+    await new Promise(resolve=>server.listen(0,"127.0.0.1",resolve));
+    try {
+      const root="http://127.0.0.1:"+server.address().port;
+      const cfg=await fetch(root+"/api/v1/config");
+      assert.deepEqual(await cfg.json(),{backend:"supabase",sharedAuth:true,registrationEnabled:false});
+      const reg=await fetch(root+"/api/v1/auth/register",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({email:"new@example.com",password:"very-long-password"})});
+      assert.equal(reg.status,403);
+    }finally {await new Promise(resolve=>server.close(resolve));}
+  }finally {
+    if(original===undefined)delete process.env.PRIORLY_USE_SHARED_SUPABASE;
+    else process.env.PRIORLY_USE_SHARED_SUPABASE=original;
+  }
 });
 test("Supabase auth delegates password storage, supports verification, verifies users and refreshes",async()=>{
   const {store,calls}=fixture();

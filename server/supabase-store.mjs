@@ -68,11 +68,15 @@ export function createSupabaseStore({
   try {base=new URL(url);if(base.protocol!=="https:"||!base.hostname.endsWith(".supabase.co"))throw Error();}
   catch {throw new Error("SUPABASE_URL must be a valid https://<project>.supabase.co URL.");}
   if(!key||typeof key!=="string")throw new Error("SUPABASE_PUBLISHABLE_KEY is required.");
-  // Prysm's auth.users trigger creates Prysm user_profiles. Keep Priorly login/
-  // registration disabled against this shared staging project.
-  if(base.hostname==="dpcpbebiylwozvkjubeq.supabase.co") {
-    throw new Error("Prysm Style is for Priorly schema staging ONLY. Its shared Auth trigger must not be used for Priorly accounts.");
+  // User explicitly approved reusing Prysm Style's database. This is deliberately
+  // opt-in and local-only: its Auth instance is SHARED with Prysm and an existing
+  // signup trigger creates a fashion profile. Disable new Priorly registrations
+  // here to avoid creating Prysm accounts as an unintended side effect.
+  const sharedAuth = base.hostname === "dpcpbebiylwozvkjubeq.supabase.co";
+  if (sharedAuth && process.env.PRIORLY_USE_SHARED_SUPABASE !== "true") {
+    throw new Error("Prysm Style is a shared Supabase Auth environment. Set PRIORLY_USE_SHARED_SUPABASE=true for explicit local opt-in.");
   }
+  const canRegister = !sharedAuth;
   const origin=base.origin;
   const standardHeaders={"apikey":key,"Accept":"application/json"};
 
@@ -102,6 +106,8 @@ export function createSupabaseStore({
 
   const auth=(path,params)=>request("/auth/v1/"+path,params);
   async function signUp(emailValue,passwordValue){
+    if (!canRegister) throw fail(403,"REGISTRATION_DISABLED",
+      "Account registration is disabled for shared Prysm authentication. Sign in with an existing account.");
     const email=validateEmail(emailValue),password=validatePassword(passwordValue);
     const data=await auth("signup",{method:"POST",body:{email,password}});
     return {user:data.user?{id:data.user.id,email:data.user.email,createdAt:data.user.created_at}:null,
@@ -295,5 +301,5 @@ export function createSupabaseStore({
       }
     };
   }
-  return {kind:"supabase",signUp,signIn,getUser,refreshSession,signOut,forToken};
+  return {kind:"supabase",sharedAuth,canRegister,signUp,signIn,getUser,refreshSession,signOut,forToken};
 }
