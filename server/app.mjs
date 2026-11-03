@@ -26,15 +26,36 @@ const send = (res, status, data, extra={}) => {
   res.end(JSON.stringify(data));
 };
 const error = (status,code,message) => new AppError(status,code,message);
-const tokenFrom = req => {
+const cookieFrom = (req,name) => {
   const raw=String(req.headers.cookie||"");
-  const sid=raw.split(";").map(s=>s.trim()).find(s=>s.startsWith("priorly_session="));
-  return sid ? sid.slice("priorly_session=".length) : "";
+  const pair=raw.split(";").map(s=>s.trim()).find(s=>s.startsWith(name+"="));
+  return pair?pair.slice(name.length+1):"";
 };
-const sessionCookie = (token,clear=false) => {
+const tokenFrom = req => cookieFrom(req,"priorly_session");
+const cookiesFor = (token,refreshToken="",clear=false) => {
   const flags=["Path=/","HttpOnly","SameSite=Strict",process.env.NODE_ENV==="production"?"Secure":""].filter(Boolean);
-  return "priorly_session="+(clear?"":token)+"; "+flags.join("; ")+(clear?"; Max-Age=0":"; Max-Age=604800");
+  const suffix="; "+flags.join("; ")+(clear?"; Max-Age=0":"");
+  const result=["priorly_session="+(clear?"":token)+suffix];
+  if(refreshToken||clear)result.push("priorly_refresh="+(clear?"":refreshToken)+suffix);
+  return result;
 };
+async function getSession(req,res,store) {
+  let token=tokenFrom(req), user;
+  if(store.kind==="supabase"){
+    user=await store.getUser(token);
+    if(!user){
+      const refreshed=await store.refreshSession(cookieFrom(req,"priorly_refresh"));
+      if(refreshed){
+        token=refreshed.token;
+        user=await store.getUser(token);
+        if(user)res.setHeader("Set-Cookie",cookiesFor(token,refreshed.refreshToken));
+      }
+    }
+  }else{
+    user=store.userForToken(token);
+  }
+  return {user,token};
+}
 async function readBody(req) {
   let total=0;
   const chunks=[];
@@ -79,7 +100,7 @@ export function createApp({
     res.setHeader("X-Request-Id",requestId);
     try {
       const pathname=new URL(req.url||"/","http://localhost").pathname;
-      if(pathname==="/api/v1/health"&&req.method==="GET")return send(res,200,{status:"ok",version:"0.3.0",storage:"sqlite"});
+      if(pathname==="/api/v1/health"&&req.method==="GET")return send(res,200,{status:"ok",version:"0.5.0",storage:store.kind==="supabase"?"supabase":"sqlite"});
       if(req.method==="GET"&&FILES.has(pathname)){
         const [file,mime]=FILES.get(pathname);
         const bytes=await readFile(new URL(file,import.meta.url));
@@ -95,16 +116,19 @@ export function createApp({
         if(parts.length===4&&["register","login"].includes(parts[3])&&req.method==="POST"){
           throttle(buckets,"auth:"+req.socket.remoteAddress,clock(),10,windowMs);
           const body=await readBody(req);
-          const result=parts[3]==="register"?store.signUp(body.email,body.password):store.signIn(body.email,body.password);
-          return send(res,200,{user:result.user},{"Set-Cookie":sessionCookie(result.token)});
+          const result=await (parts[3]==="register"?store.signUp(body.email,body.password):store.signIn(body.email,body.password));
+          if(result.verificationRequired) return send(res,202,{verificationRequired:true,message:"Confirm your email before signing in."});
+          res.setHeader("Set-Cookie",cookiesFor(result.token,result.refreshToken));
+          return send(res,200,{user:result.user});
         }
         if(parts.length===4&&parts[3]==="me"&&req.method==="GET"){
-          const user=store.userForToken(tokenFrom(req));
+          const {user}=await getSession(req,res,store);
           return user?send(res,200,{user}):send(res,401,{error:{code:"NOT_AUTHENTICATED",message:"Sign in to continue."}});
         }
         if(parts.length===4&&parts[3]==="logout"&&req.method==="POST"){
-          store.signOut(tokenFrom(req));
-          return send(res,200,{ok:true},{"Set-Cookie":sessionCookie("",true)});
+          await store.signOut(tokenFrom(req));
+          res.setHeader("Set-Cookie",cookiesFor("","",true));
+          return send(res,200,{ok:true});
         }
         return send(res,404,{error:{code:"NOT_FOUND",message:"Not found."}});
       }
@@ -117,23 +141,24 @@ export function createApp({
         return send(res,200,await service(body));
       }
       if(parts[2]!=="projects")return send(res,404,{error:{code:"NOT_FOUND",message:"Not found."}});
-      const user=store.userForToken(tokenFrom(req));
+      const {user,token}=await getSession(req,res,store);
       if(!user)throw error(401,"NOT_AUTHENTICATED","Sign in to continue.");
+      const scoped=store.forToken?store.forToken(token):store;
       if(parts.length===3){
-        if(req.method==="GET")return send(res,200,{projects:store.listProjects(user.id)});
-        if(req.method==="POST")return send(res,201,{project:store.createProject(user.id,await readBody(req))});
+        if(req.method==="GET")return send(res,200,{projects:await scoped.listProjects(user.id)});
+        if(req.method==="POST")return send(res,201,{project:await scoped.createProject(user.id,await readBody(req))});
       }
       const projectId=parts[3];
       if(parts.length===4){
-        if(req.method==="GET")return send(res,200,{project:store.getProject(user.id,projectId)});
-        if(req.method==="PUT")return send(res,200,{project:store.updateProject(user.id,projectId,await readBody(req))});
-        if(req.method==="DELETE"){store.deleteProject(user.id,projectId);return send(res,200,{ok:true});}
+        if(req.method==="GET")return send(res,200,{project:await scoped.getProject(user.id,projectId)});
+        if(req.method==="PUT")return send(res,200,{project:await scoped.updateProject(user.id,projectId,await readBody(req))});
+        if(req.method==="DELETE"){await scoped.deleteProject(user.id,projectId);return send(res,200,{ok:true});}
       }
       if(parts.length===5&&parts[4]==="research"){
-        if(req.method==="GET")return send(res,200,{runs:store.listRuns(user.id,projectId)});
+        if(req.method==="GET")return send(res,200,{runs:await scoped.listRuns(user.id,projectId)});
         if(req.method==="POST"){
           throttle(buckets,"research:"+req.socket.remoteAddress,clock(),maxRequests,windowMs);
-          const project=store.getProject(user.id,projectId);
+          const project=await scoped.getProject(user.id,projectId);
           const result=await service({
             ideaName:project.title,
             ideaProblem:project.problem,
@@ -141,32 +166,32 @@ export function createApp({
             ideaAudience:project.audience,
             ideaKeywords:project.keywords
           });
-          return send(res,201,{run:store.storeRun(user.id,projectId,result)});
+          return send(res,201,{run:await scoped.storeRun(user.id,projectId,result)});
         }
       }
       if(parts.length===5&&parts[4]==="evidence"&&req.method==="GET"){
-        return send(res,200,{evidence:store.listEvidence(user.id,projectId)});
+        return send(res,200,{evidence:await scoped.listEvidence(user.id,projectId)});
       }
       if(parts.length===6&&parts[4]==="evidence"&&req.method==="PATCH"){
-        return send(res,200,{evidence:store.classifyEvidence(user.id,projectId,parts[5],await readBody(req))});
+        return send(res,200,{evidence:await scoped.classifyEvidence(user.id,projectId,parts[5],await readBody(req))});
       }
       if(parts.length===5&&parts[4]==="evidence"&&req.method==="POST"){
-        return send(res,201,{evidence:store.importEvidence(user.id,projectId,await readBody(req))});
+        return send(res,201,{evidence:await scoped.importEvidence(user.id,projectId,await readBody(req))});
       }
       if(parts.length===5&&parts[4]==="claims"){
-        if(req.method==="GET")return send(res,200,{claims:store.listClaims(user.id,projectId)});
-        if(req.method==="POST")return send(res,201,{claim:store.createClaim(user.id,projectId,await readBody(req))});
+        if(req.method==="GET")return send(res,200,{claims:await scoped.listClaims(user.id,projectId)});
+        if(req.method==="POST")return send(res,201,{claim:await scoped.createClaim(user.id,projectId,await readBody(req))});
       }
       if(parts.length===6&&parts[4]==="claims"){
-        if(req.method==="PUT")return send(res,200,{claim:store.updateClaim(user.id,projectId,parts[5],await readBody(req))});
-        if(req.method==="DELETE"){store.deleteClaim(user.id,projectId,parts[5]);return send(res,200,{ok:true});}
+        if(req.method==="PUT")return send(res,200,{claim:await scoped.updateClaim(user.id,projectId,parts[5],await readBody(req))});
+        if(req.method==="DELETE"){await scoped.deleteClaim(user.id,projectId,parts[5]);return send(res,200,{ok:true});}
       }
       if(parts.length===7&&parts[4]==="claims"&&parts[6]==="sources"){
-        if(req.method==="GET")return send(res,200,{links:store.listClaimLinks(user.id,projectId,parts[5])});
-        if(req.method==="POST")return send(res,201,{link:store.linkClaimSource(user.id,projectId,parts[5],await readBody(req))});
+        if(req.method==="GET")return send(res,200,{links:await scoped.listClaimLinks(user.id,projectId,parts[5])});
+        if(req.method==="POST")return send(res,201,{link:await scoped.linkClaimSource(user.id,projectId,parts[5],await readBody(req))});
       }
       if(parts.length===8&&parts[4]==="claims"&&parts[6]==="sources"&&req.method==="DELETE"){
-        store.unlinkClaimSource(user.id,projectId,parts[5],parts[7]);
+        await scoped.unlinkClaimSource(user.id,projectId,parts[5],parts[7]);
         return send(res,200,{ok:true});
       }
       return send(res,405,{error:{code:"METHOD_NOT_ALLOWED",message:"Method not allowed."}});

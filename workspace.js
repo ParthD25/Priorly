@@ -169,6 +169,7 @@ byId("auth-form").onsubmit=async e=>{
   e.preventDefault(); const button=byId("auth-submit");button.disabled=true;byId("auth-error").hidden=true;
   try{
     const result=await api("/api/v1/auth/"+(mode==="login"?"login":"register"),{method:"POST",body:{email:byId("email").value,password:byId("password").value}});
+    if(result.verificationRequired){byId("password").value="";setMode("login");toast(result.message||"Verify your email, then sign in.");return;}
     user=result.user;authView(true);byId("password").value="";await listProjects();toast("Signed in");
   }catch(err){byId("auth-error").textContent=err.message;byId("auth-error").hidden=false}
   finally{button.disabled=false}
