@@ -1,6 +1,6 @@
 # Priorly engineering roadmap and role charters
 
-Status: phase 1 foundation is in progress. This is an incremental build plan, not a claim that specialist autonomous agents are running.
+Status: phase 1, local phase 2, and first claim/evidence workflow implemented. The Postgres schema and RLS tests are an infrastructure gate, not a hosted deployment. This is an incremental build plan, not a claim that specialist autonomous agents are running.
 
 ## Product contract
 

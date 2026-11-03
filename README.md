@@ -39,3 +39,9 @@ Phase 3 (first slice): claim-level comparisons connect a stated technical mechan
 ## Planning and architecture
 
 See docs/ROADMAP.md, docs/ADR-0001.md, docs/ADR-0002.md, and docs/ADR-0003.md. Next: dedicated managed database and identity, encrypted storage, reviewed security model, real patent claim data, source-to-claim mappings and independent expert validation.
+
+## Dedicated PostgreSQL deployment preparation
+
+The `infra/postgres/001_priorly_schema.sql` file is a **not-yet-applied** schema baseline for a NEW Priorly Supabase project. It includes owner-scoped projects, research runs, evidence, technical claims and source comparisons, and uses RLS and composite foreign keys. GitHub Actions tests the actual SQL against an isolated Postgres 16 database; to test locally use `PRIORLY_TEST_DATABASE_URL=postgresql://...` and `npm run test:postgres` against a **disposable** database. The test bootstrap creates synthetic auth roles, so NEVER run it on an existing user database.
+
+The local SQLite server now refuses `NODE_ENV=production` or a non-loopback binding. There is no dedicated hosted Priorly project yet, the SQL is NOT applied, and the running app does not use Postgres. Before deployment, replace local auth and SQLite storage with a fully verified hosted adapter, email verification, session management, backups, encrypted data and security testing. See docs/ADR-0004.md.
