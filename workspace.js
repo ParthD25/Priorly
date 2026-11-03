@@ -3,6 +3,7 @@ const byId=id=>document.getElementById(id);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const safeUrl=s=>{try{const u=new URL(s);return u.protocol==="https:"?u.href:"#"}catch{return "#"}};
 let mode="login",user=null,projects=[],selected=null,evidence=[],runs=[],claims=[];
+let registrationEnabled=true,sharedAuth=false;
 const toast=(message)=>{const box=byId("toast");box.textContent=message;box.hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>box.hidden=true,4800)};
 async function api(path,{method="GET",body}={}){
   const response=await fetch(path,{method,credentials:"same-origin",headers:body===undefined?{}:{"Content-Type":"application/json"},body:body===undefined?undefined:JSON.stringify(body)});
@@ -17,10 +18,13 @@ function authView(isAuthenticated){
   byId("current-email").textContent=isAuthenticated?user.email:"";
 }
 function setMode(next){
-  mode=next;
-  const signUp=next==="register";
+  mode=registrationEnabled?next:"login";
+  const signUp=mode==="register";
   byId("auth-heading").textContent=signUp?"Start your workspace.":"Welcome back.";
-  byId("auth-subheading").textContent=signUp?"Create a local development account.":"Sign in to your Priorly research workspace.";
+  byId("auth-subheading").textContent=sharedAuth
+    ?"Use an existing account from the shared Prysm Style Supabase Auth service. Priorly's project data remains in separate RLS-protected tables."
+    :(signUp?"Create a development account.":"Sign in to your Priorly research workspace.");
+  byId("toggle-auth").hidden=!registrationEnabled;
   byId("auth-submit").textContent=signUp?"Create account →":"Sign in →";
   byId("toggle-auth").textContent=signUp?"Already have an account? Sign in":"New to Priorly? Create an account";
   byId("password").autocomplete=signUp?"new-password":"current-password";
@@ -218,5 +222,13 @@ byId("evidence-list").onclick=async e=>{
     await loadEvidence();toast("Evidence review saved");
   }catch(err){toast(err.message);btn.disabled=false}
 };
-(async()=>{try{const r=await api("/api/v1/auth/me");user=r.user;authView(true);await listProjects()}
-catch{user=null;authView(false)}})();
+(async()=>{
+  try {
+    const config=await api("/api/v1/config");
+    registrationEnabled=config.registrationEnabled!==false;
+    sharedAuth=config.sharedAuth===true;
+  } catch { /* preserve local-only fallback if older server lacks /config */ }
+  setMode("login");
+  try {const r=await api("/api/v1/auth/me");user=r.user;authView(true);await listProjects()}
+  catch{user=null;authView(false)}
+})();

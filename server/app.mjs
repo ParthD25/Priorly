@@ -101,6 +101,11 @@ export function createApp({
     try {
       const pathname=new URL(req.url||"/","http://localhost").pathname;
       if(pathname==="/api/v1/health"&&req.method==="GET")return send(res,200,{status:"ok",version:"0.5.0",storage:store.kind==="supabase"?"supabase":"sqlite"});
+      if(pathname==="/api/v1/config"&&req.method==="GET")return send(res,200,{
+        backend:store.kind==="supabase"?"supabase":"sqlite",
+        sharedAuth:store.sharedAuth===true,
+        registrationEnabled:store.canRegister!==false
+      });
       if(req.method==="GET"&&FILES.has(pathname)){
         const [file,mime]=FILES.get(pathname);
         const bytes=await readFile(new URL(file,import.meta.url));
