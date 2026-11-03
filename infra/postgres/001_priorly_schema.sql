@@ -8,7 +8,7 @@ begin;
 
 create table if not exists public.priorly_projects (
   id uuid primary key default gen_random_uuid(),
-  owner_id uuid not null default (select auth.uid()) references auth.users(id) on delete cascade,
+  owner_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
   title text not null check (char_length(title) between 2 and 90),
   problem text not null default '' check (char_length(problem) <= 1800),
   solution text not null default '' check (char_length(solution) <= 2400),
@@ -22,7 +22,7 @@ create index if not exists priorly_projects_owner_updated on public.priorly_proj
 
 create table if not exists public.priorly_research_runs (
   id uuid primary key default gen_random_uuid(),
-  owner_id uuid not null default (select auth.uid()),
+  owner_id uuid not null default auth.uid(),
   project_id uuid not null,
   result_json jsonb not null,
   created_at timestamptz not null default now(),
@@ -32,7 +32,7 @@ create index if not exists priorly_runs_project_created on public.priorly_resear
 
 create table if not exists public.priorly_evidence (
   id uuid primary key default gen_random_uuid(),
-  owner_id uuid not null default (select auth.uid()),
+  owner_id uuid not null default auth.uid(),
   project_id uuid not null,
   source text not null check (char_length(source) between 1 and 100),
   source_id text not null check (char_length(source_id) between 1 and 1500),
@@ -51,7 +51,7 @@ create index if not exists priorly_evidence_project_updated on public.priorly_ev
 
 create table if not exists public.priorly_claims (
   id uuid primary key default gen_random_uuid(),
-  owner_id uuid not null default (select auth.uid()),
+  owner_id uuid not null default auth.uid(),
   project_id uuid not null,
   description text not null check (char_length(description) between 10 and 350),
   mechanism text not null default '' check (char_length(mechanism) <= 1800),
@@ -66,7 +66,7 @@ create table if not exists public.priorly_claim_sources (
   claim_id uuid not null,
   evidence_id uuid not null,
   project_id uuid not null,
-  owner_id uuid not null default (select auth.uid()),
+  owner_id uuid not null default auth.uid(),
   relation text not null check (relation in ('overlap','possible-difference','background','uncertain')),
   source_excerpt text not null default '' check (char_length(source_excerpt) <= 1000),
   rationale text not null default '' check (char_length(rationale) <= 1500),
