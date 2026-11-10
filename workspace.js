@@ -91,7 +91,7 @@ function drawEvidence(){
     byId("research-summary").textContent="Last research: "+new Date(runs[0].createdAt).toLocaleString()+" · "+(recent.papers?.length||0)+" publications · "+(recent.repos?.length||0)+" repositories. "+(errors.length?"Some providers failed: "+errors.join("; "):"All requested sources responded. Results still require review.");
     byId("research-summary").classList.toggle("warn",errors.length>0);
   }
-  byId("evidence-list").innerHTML=evidence.length?evidence.map(x=>'<article class="evidence-card" data-evidence="'+esc(x.id)+'"><div class="source-label">'+esc(x.source)+' · RETRIEVED '+esc(new Date(x.retrievedAt).toLocaleDateString())+'</div><a target="_blank" rel="noopener noreferrer" href="'+esc(safeUrl(x.url))+'">'+esc(x.title)+' ↗</a><div class="review-row"><select aria-label="Review classification" data-classification="'+esc(x.id)+'">'+classes.map(s=>'<option value="'+s+'" '+(x.classification===s?"selected":"")+'>'+esc(s.replace(/-/g," "))+'</option>').join("")+'</select><textarea data-note="'+esc(x.id)+' maxlength="1500" rows="2" placeholder="Evidence-specific human review notes…">'+esc(x.note)+'</textarea><button type="button" class="secondary" data-save-review="'+esc(x.id)+'">Save</button></div></article>').join(""):'<p class="small">No evidence collected. Run research to import linked publications and repositories.</p>';
+  byId("evidence-list").innerHTML=evidence.length?evidence.map(x=>'<article class="evidence-card" data-evidence="'+esc(x.id)+'"><div class="source-label">'+esc(x.source)+' · RETRIEVED '+esc(new Date(x.retrievedAt).toLocaleDateString())+'</div><a target="_blank" rel="noopener noreferrer" href="'+esc(safeUrl(x.url))+'">'+esc(x.title)+' ↗</a><div class="source-url">'+esc(x.url)+'</div><div class="review-row"><select aria-label="Review classification" data-classification="'+esc(x.id)+'">'+classes.map(s=>'<option value="'+s+'" '+(x.classification===s?"selected":"")+'>'+esc(s.replace(/-/g," "))+'</option>').join("")+'</select><textarea data-note="'+esc(x.id)+' maxlength="1500" rows="2" placeholder="Evidence-specific human review notes…">'+esc(x.note)+'</textarea><button type="button" class="secondary" data-save-review="'+esc(x.id)+'">Save</button></div></article>').join(""):'<p class="small">No evidence collected. Run research to import linked publications and repositories.</p>';
 }
 function download(name,content,type){
   const url=URL.createObjectURL(new Blob([content],{type}));
@@ -119,12 +119,12 @@ function exportBrief(){
 }
 const linkRelations=["overlap","possible-difference","background","uncertain"];
 function drawClaims(){
-  byId("claim-status").textContent=claims.length+" CLAIMS";
+  byId("claim-status").textContent=claims.length+" CAPABILITIES";
   byId("claim-list").innerHTML=claims.length?claims.map(c=>{
     const links=(c.links||[]).map(l=>'<div class="claim-link"><span>'+esc(l.relation.replace(/-/g," "))+'</span><a href="'+esc(safeUrl(l.url))+'" target="_blank" rel="noopener noreferrer">'+esc(l.title)+' ↗</a><p>'+esc(l.sourceExcerpt||"No excerpt recorded")+'</p><p>'+esc(l.rationale||"Reviewer reasoning not recorded")+'</p><button type="button" class="text-action" data-unlink="'+esc(c.id)+'" data-source-id="'+esc(l.evidenceId)+'">Remove comparison</button></div>').join("");
     const options=evidence.map(e=>'<option value="'+esc(e.id)+'">'+esc(e.source+" · "+e.title.slice(0,70))+'</option>').join("");
-    return '<article class="claim-item" data-claim="'+esc(c.id)+'"><div class="claim-heading"><div><strong>'+esc(c.description)+'</strong><p>'+esc(c.mechanism||"Technical mechanism not yet described.")+'</p></div><button class="danger" type="button" data-delete-claim="'+esc(c.id)+'">Delete</button></div>'+links+(evidence.length?'<div class="claim-link-form"><label>Attach and compare a source</label><select data-claim-source="'+esc(c.id)+'">'+options+'</select><select data-link-relation="'+esc(c.id)+'">'+linkRelations.map(x=>'<option value="'+x+'">'+esc(x.replace(/-/g," "))+'</option>').join("")+'</select><input data-link-excerpt="'+esc(c.id)+'" maxlength="1000" placeholder="Relevant passage, entered by reviewer"><textarea data-link-rationale="'+esc(c.id)+'" maxlength="1500" rows="2" placeholder="Why is this similar, different, or uncertain?"></textarea><button type="button" class="secondary" data-add-link="'+esc(c.id)+'">Save source comparison</button></div>':'<p class="small">Add a source in the research panel before mapping evidence to this claim.</p>')+'</article>';
-  }).join(""):'<p class="small">No technical claims yet. Add a focused claim to start comparing evidence.</p>';
+    return '<article class="claim-item" data-claim="'+esc(c.id)+'"><div class="claim-heading"><div><strong>'+esc(c.description)+'</strong><p>'+esc(c.mechanism||"Technical mechanism not yet described.")+'</p></div><button class="danger" type="button" data-delete-claim="'+esc(c.id)+'">Delete</button></div>'+links+(evidence.length?'<div class="claim-link-form"><label>Attach and compare a source</label><select data-claim-source="'+esc(c.id)+'">'+options+'</select><select data-link-relation="'+esc(c.id)+'">'+linkRelations.map(x=>'<option value="'+x+'">'+esc(x.replace(/-/g," "))+'</option>').join("")+'</select><input data-link-excerpt="'+esc(c.id)+'" maxlength="1000" placeholder="Relevant passage, entered by reviewer"><textarea data-link-rationale="'+esc(c.id)+'" maxlength="1500" rows="2" placeholder="Why is this similar, different, or uncertain?"></textarea><button type="button" class="secondary" data-add-link="'+esc(c.id)+'">Save source comparison</button></div>':'<p class="small">Attach a source in the retrieved-sources panel before comparing it with this capability.</p>')+'</article>';
+  }).join(""):'<p class="small">No capabilities recorded yet. Add one to start comparing evidence.</p>';
 }
 byId("source-form").onsubmit=async event=>{
   event.preventDefault();
@@ -144,7 +144,7 @@ byId("claim-form").onsubmit=async event=>{
     await api("/api/v1/projects/"+selected+"/claims",{method:"POST",body:{
       description:byId("claim-description").value,mechanism:byId("claim-mechanism").value
     }});
-    byId("claim-form").reset();await loadEvidence();toast("Technical claim saved");
+    byId("claim-form").reset();await loadEvidence();toast("Capability saved");
   }catch(e){toast(e.message)}finally{btn.disabled=!selected}
 };
 byId("claim-list").onclick=async event=>{
@@ -153,7 +153,7 @@ byId("claim-list").onclick=async event=>{
   const unlink=event.target.closest("[data-unlink]");
   if(!add&&!del&&!unlink)return;
   const id=(add?.dataset.addLink||del?.dataset.deleteClaim||unlink?.dataset.unlink);
-  if(del&&!confirm("Delete this technical claim and its linked evidence comparisons?"))return;
+  if(del&&!confirm("Delete this capability and its linked source comparisons?"))return;
   event.target.disabled=true;
   try{
     const base="/api/v1/projects/"+selected+"/claims/"+id;
@@ -165,7 +165,7 @@ byId("claim-list").onclick=async event=>{
       }});
     }else if(del){await api(base,{method:"DELETE",body:{}})}
     else{await api(base+"/sources/"+unlink.dataset.sourceId,{method:"DELETE",body:{}})}
-    await loadEvidence();toast("Claim evidence updated");
+    await loadEvidence();toast("Source comparison updated");
   }catch(e){toast(e.message);event.target.disabled=false}
 };
 byId("toggle-auth").onclick=()=>setMode(mode==="login"?"register":"login");
@@ -208,7 +208,7 @@ byId("run-research").onclick=async()=>{
   if(!p.problem||!p.solution){toast("Add a complete problem and proposed solution, then save.");return;}
   const btn=byId("run-research");btn.disabled=true;btn.textContent="Researching…";
   try{await api("/api/v1/projects/"+selected+"/research",{method:"POST",body:{}});await loadEvidence();toast("Research saved with source links")}
-  catch(err){toast(err.message)}finally{btn.disabled=false;btn.textContent="Run research on saved project ↗"}
+  catch(err){toast(err.message)}finally{btn.disabled=false;btn.textContent="Run research on saved matter ↗"}
 };
 byId("export-brief").onclick=exportBrief;
 byId("evidence-list").onclick=async e=>{

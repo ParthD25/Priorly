@@ -55,6 +55,7 @@ export function normalizeOpenAlex(payload, retrievedAt) {
     title: String(item.title || "Untitled").slice(0, 400),
     year: Number.isInteger(item.publication_year) ? item.publication_year : null,
     cited: Number.isInteger(item.cited_by_count) ? item.cited_by_count : 0,
+    venue: String(item.primary_location?.source?.display_name || "").slice(0, 200),
     url: httpsUrl(item.doi) || httpsUrl(item.primary_location?.landing_page_url) || httpsUrl(item.id),
     source: "OpenAlex",
     retrievedAt
@@ -68,6 +69,7 @@ export function normalizeGitHub(payload, retrievedAt) {
     title: String(item.full_name || "Unknown repository").slice(0, 240),
     description: String(item.description || "").slice(0, 600),
     stars: Number.isInteger(item.stargazers_count) ? item.stargazers_count : 0,
+    created: typeof item.created_at === "string" ? item.created_at.slice(0, 10) : "",
     url: httpsUrl(item.html_url),
     source: "GitHub",
     retrievedAt

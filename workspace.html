@@ -2,22 +2,22 @@
 <html lang="en">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="description" content="Priorly private project and evidence workspace">
+  <meta name="description" content="Priorly private research file for startup counsel">
   <title>Workspace — Priorly</title><link rel="stylesheet" href="/workspace.css">
   <script src="/workspace.js" defer></script>
 </head>
 <body>
 <header class="topbar">
   <a class="logo" href="/"><span class="logo-mark">P·</span><strong>priorly<span class="accent">.</span></strong></a>
-  <span class="header-label">FOUNDER WORKSPACE <span class="muted">/ PRIVATE BETA</span></span>
+  <span class="header-label">COUNSEL WORKSPACE <span class="muted">/ PRIVATE BETA</span></span>
   <div class="account"><span id="current-email"></span><button id="logout" class="ghost" hidden>Sign out</button></div>
 </header>
 <main>
   <section class="auth" id="auth-screen">
-    <div class="auth-intro"><div class="eyebrow">MAKE INNOVATION DEFENSIBLE.</div><h1>Your ideas.<br><em>Under review.</em></h1><p>A dedicated workspace for startup differentiation, research evidence, and intellectual-property questions.</p><div class="privacy-note">This early beta is for non-confidential test ideas. Do not enter unpublished inventions, secrets or legal agreements until production security controls are verified. When using Prysm Style's shared database, user accounts are shared between products, even though Priorly project records have separate permissions.</div></div>
+    <div class="auth-intro"><div class="eyebrow">PRELIMINARY RESEARCH FOR STARTUP COUNSEL.</div><h1>Every new client.<br><em>The same first pass.</em></h1><p>A working file for the landscape search you run before the analysis can be billed: intake, retrieved sources, your own classifications, and the claim-level comparisons you record by hand.</p><div class="privacy-note">This early beta is for non-confidential test ideas. Do not enter unpublished inventions, secrets or legal agreements until production security controls are verified. When using Prysm Style's shared database, user accounts are shared between products, even though Priorly project records have separate permissions.</div></div>
     <div class="surface auth-card">
       <div class="eyebrow">01 / ACCOUNT</div><h2 id="auth-heading">Welcome back.</h2><p class="hint" id="auth-subheading">Sign in to your Priorly research workspace.</p>
-      <form id="auth-form"><label for="email">Email address</label><input id="email" type="email" autocomplete="email" maxlength="254" required placeholder="you@company.com">
+      <form id="auth-form"><label for="email">Email address</label><input id="email" type="email" autocomplete="email" maxlength="254" required placeholder="you@firm.com">
       <label for="password">Password</label><input id="password" type="password" autocomplete="current-password" minlength="12" maxlength="128" required placeholder="At least 12 characters">
       <button type="submit" id="auth-submit" class="primary">Sign in →</button></form>
       <p class="error" role="alert" id="auth-error" hidden></p>
@@ -26,28 +26,28 @@
   </section>
 
   <section id="workspace-screen" hidden>
-    <div class="intro"><div><div class="eyebrow">YOUR WORKSPACE / 02</div><h1>Research that<br><em>holds up.</em></h1><p>Organize startup ideas, keep source-level evidence, and record human review decisions.</p></div><div class="intro-actions"><a class="secondary" href="/">← Public research preview</a><button id="new-project" class="primary">+ New project</button></div></div>
-    <div class="layout"><aside class="sidebar surface"><div class="aside-head"><span>PROJECTS</span><span id="project-count">0</span></div><div id="project-list" class="project-list"></div><p class="small">Only projects belonging to your account are returned by the API.</p></aside>
+    <div class="intro"><div><div class="eyebrow">YOUR WORKSPACE / 02</div><h1>Files that<br><em>hold up.</em></h1><p>Organize matters, keep source-level evidence, and record your own review decisions for the client file.</p></div><div class="intro-actions"><a class="secondary" href="/">← Public research preview</a><button id="new-project" class="primary">+ New matter</button></div></div>
+    <div class="layout"><aside class="sidebar surface"><div class="aside-head"><span>MATTERS</span><span id="project-count">0</span></div><div id="project-list" class="project-list"></div><p class="small">Only matters belonging to your account are returned by the API.</p></aside>
     <div class="content-stack">
       <div class="surface project-editor">
-        <div class="panel-heading"><span>PROJECT HYPOTHESIS</span><span id="project-status">NOT SAVED</span></div>
+        <div class="panel-heading"><span>CLIENT INTAKE</span><span id="project-status">NOT SAVED</span></div>
         <form id="project-form">
-          <div class="grid2"><div><label for="project-title">Project name</label><input id="project-title" required minlength="2" maxlength="90" placeholder="What are you building?"></div><div><label for="project-audience">Intended customer</label><input id="project-audience" maxlength="180" placeholder="Who would pay for it?"></div></div>
-          <label for="project-problem">The problem</label><textarea id="project-problem" maxlength="1800" rows="3" placeholder="Who has the problem? Why does it matter?"></textarea>
-          <label for="project-solution">Your proposed technical approach</label><textarea id="project-solution" maxlength="2400" rows="4" placeholder="Describe the actual system or algorithm and what makes it different."></textarea>
-          <label for="project-keywords">Search terms</label><input id="project-keywords" maxlength="300" placeholder="e.g. chain of title, IP audit, patent landscape">
-          <div class="form-actions"><button class="primary" type="submit" id="save-project">Save project</button><button type="button" id="delete-project" class="danger" hidden>Delete project</button></div>
+          <div class="grid2"><div><label for="project-title">Matter name</label><input id="project-title" required minlength="2" maxlength="90" placeholder="Client or project reference"></div><div><label for="project-audience">Intended customer</label><input id="project-audience" maxlength="180" placeholder="Who the client says would pay for it"></div></div>
+          <label for="project-problem">The problem, as the founder describes it</label><textarea id="project-problem" maxlength="1800" rows="3" placeholder="Who has the problem? Why does it matter?"></textarea>
+          <label for="project-solution">The proposed approach</label><textarea id="project-solution" maxlength="2400" rows="4" placeholder="The system, mechanism and what the founder believes is different."></textarea>
+          <label for="project-keywords">Capabilities / search terms</label><input id="project-keywords" maxlength="300" placeholder="e.g. certification tracking, shift coverage, audit trail">
+          <div class="form-actions"><button class="primary" type="submit" id="save-project">Save matter</button><button type="button" id="delete-project" class="danger" hidden>Delete matter</button></div>
         </form>
       </div>
       <div class="surface evidence-panel">
-        <div class="panel-heading"><span>RESEARCH & EVIDENCE</span><span id="research-status">NO RESEARCH YET</span></div>
-        <div class="research-actions"><button id="run-research" class="primary" disabled>Run research on saved project ↗</button><button id="export-brief" class="secondary" disabled>Export brief ↓</button></div>
-        <p class="disclaimer">This searches public OpenAlex publications and GitHub repositories. Matches are research leads, not proof of uniqueness or legal ownership. Search keywords leave Priorly and are sent to the providers.</p>
-        <div id="research-summary" class="notice">Save a project to begin source-backed research.</div>
+        <div class="panel-heading"><span>RETRIEVED SOURCES &amp; REVIEW</span><span id="research-status">NO RESEARCH YET</span></div>
+        <div class="research-actions"><button id="run-research" class="primary" disabled>Run research on saved matter ↗</button><button id="export-brief" class="secondary" disabled>Export brief ↓</button></div>
+        <p class="disclaimer">This searches public OpenAlex publications and GitHub repositories. Matches are research leads, not proof of uniqueness or legal ownership. No patent database connector is configured in this build, so no patent search is performed. Search keywords leave Priorly and are sent to the providers.</p>
+        <div id="research-summary" class="notice">Save a matter to begin source-backed research.</div>
         <div id="evidence-list"></div>
         <form id="source-form" class="sub-form">
-          <h3>Attach a published source manually</h3>
-          <p class="small">Use an original patent publication, company product page, or technical paper. Manually attached sources are unverified until reviewed.</p>
+          <h3>Attach a source manually</h3>
+          <p class="small">Use an original patent publication, company product page, or technical paper. Manually attached sources are unverified until you review them.</p>
           <div class="grid2"><div><label for="source-title">Source title</label><input id="source-title" required minlength="5" maxlength="240" placeholder="Patent publication or product documentation"></div>
           <div><label for="source-type">Source type</label><select id="source-type"><option>Patent publication</option><option>Company documentation</option><option>Research publication</option><option>Other documentation</option></select></div></div>
           <label for="source-url">Original HTTPS URL</label><input id="source-url" type="url" required maxlength="1200" placeholder="https://patents.google.com/patent/...">
@@ -55,19 +55,19 @@
         </form>
       </div>
       <div class="surface claim-panel">
-        <div class="panel-heading"><span>TECHNICAL CLAIMS & SOURCE COMPARISONS</span><span id="claim-status">0 CLAIMS</span></div>
-        <p class="disclaimer">Define each specific mechanism or capability separately. A linked source can show overlap, a possible difference, or uncertainty. These are human research notes, not novelty or legal determinations.</p>
+        <div class="panel-heading"><span>CAPABILITIES &amp; SOURCE COMPARISONS</span><span id="claim-status">0 CAPABILITIES</span></div>
+        <p class="disclaimer">Record each capability separately. A linked source can show overlap, a possible difference, or uncertainty. These are your research notes, not novelty or legal determinations, and the attached links are not independently validated by Priorly.</p>
         <form id="claim-form" class="sub-form">
-          <label for="claim-description">Your technical claim</label>
+          <label for="claim-description">Capability</label>
           <input id="claim-description" minlength="10" maxlength="350" required placeholder="e.g. Qualification-aware replacement scheduling with auditable approvals">
-          <label for="claim-mechanism">Implementation details and technical improvement</label>
+          <label for="claim-mechanism">Implementation details and claimed improvement</label>
           <textarea id="claim-mechanism" maxlength="1800" rows="3" placeholder="Describe the algorithm, constraints, inputs, and measurable improvement."></textarea>
-          <button type="submit" id="claim-add" class="primary" disabled>Add technical claim</button>
+          <button type="submit" id="claim-add" class="primary" disabled>Add capability</button>
         </form>
         <div id="claim-list"></div>
       </div>
     </div></div>
   </section>
   <p role="status" id="toast" class="toast" hidden></p>
-</main><footer>PRIORLY / RESEARCH EVIDENCE SYSTEM <span>Not legal advice · Private beta development build</span></footer>
+</main><footer>PRIORLY / PRELIMINARY RESEARCH FILE <span>Not legal advice · Private beta development build</span></footer>
 </body></html>
