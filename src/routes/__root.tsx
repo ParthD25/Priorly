@@ -52,6 +52,17 @@ function RootDocument({ children }: { children: ReactNode }) {
         <HeadContent />
       </head>
       <body>
+        <div
+          role="note"
+          className="border-b border-[#d9c9a8] bg-[#f6efe0] px-5 py-2 text-center text-[13px] text-[#6b5424] sm:px-8"
+        >
+          <strong className="font-semibold">Preview build.</strong> Priorly&rsquo;s production app
+          is still in development. This demo runs a real search and returns real, cited sources, but
+          it is a prototype &mdash; please don&rsquo;t paste confidential or client material into it.{" "}
+          <a href="/data" className="underline underline-offset-2 hover:no-underline">
+            Where your data goes
+          </a>
+        </div>
         {children}
         <Scripts />
       </body>
