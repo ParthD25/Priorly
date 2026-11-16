@@ -43,7 +43,7 @@ begin
     raise exception 'owner cannot read back own matter record';
   end if;
   begin
-    insert into public.priorly_reviewer_decisions(project_id,finding_type,finding_id,decision,reviewer_id)
+    insert into public.priorly_reviewer_decisions(project_id,finding_type,finding_id,decision,note,reviewer_id)
       values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','evidence','eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeff',
         'patentable','Never a legal conclusion.','11111111-1111-4111-8111-111111111111');
     raise exception 'invalid reviewer decision value accepted';
@@ -93,7 +93,7 @@ begin
   get diagnostics affected = row_count;
   if affected <> 0 then raise exception 'cross-owner matter update succeeded'; end if;
   begin
-    insert into public.priorly_reviewer_decisions(project_id,finding_type,finding_id,decision,reviewer_id)
+    insert into public.priorly_reviewer_decisions(project_id,finding_type,finding_id,decision,note,reviewer_id)
       values('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','evidence','eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
         'confirmed_overlap','22222222-2222-4222-8222-222222222222');
     raise exception 'cross-owner decision insert unexpectedly succeeded';
