@@ -10,13 +10,17 @@ const EVIDENCE="eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
 const CLAIM="cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const json = (obj,status=200)=>new Response(JSON.stringify(obj),{status,headers:{"Content-Type":"application/json"}});
 const p={id:PROJECT,title:"Priorly example",problem:"A meaningful specific problem",solution:"An evidence-backed workflow",audience:"Studio",keywords:"patent search",
+client_name:"Acme Corporation",matter_reference:"2026-IP-014",matter_type:"ip",jurisdiction:"US (California)",
 created_at:"2026-11-02T00:00:00Z",updated_at:"2026-11-02T00:00:00Z"};
 const e={id:EVIDENCE,source:"OpenAlex",source_id:"W1",title:"Research paper",url:"https://openalex.org/W1",
 classification:"unreviewed",note:"",retrieved_at:"2026-11-02T00:00:00Z",updated_at:"2026-11-02T00:00:00Z"};
 const c={id:CLAIM,description:"Novel technical matching procedure",mechanism:"A real algorithm",created_at:"2026-11-02T00:00:00Z",updated_at:"2026-11-02T00:00:00Z"};
+const d={project_id:PROJECT,finding_type:"evidence",finding_id:EVIDENCE,decision:"confirmed_overlap",note:"Same mechanism.",
+reviewer_id:UUID,reviewer_email:"a@example.com",decided_at:"2026-11-02T01:00:00Z"};
 
 function fixture(){
   const calls=[];
+  const decisions=[{...d}];
   const fetchImpl=async(url,opts)=>{
     const u=new URL(url);
     calls.push({path:u.pathname,query:u.search,auth:opts.headers.Authorization,key:opts.headers.apikey,method:opts.method,body:opts.body?JSON.parse(opts.body):null});
@@ -57,6 +61,20 @@ function fixture(){
         relation:"overlap",source_excerpt:"Relevant disclosed feature",rationale:"Relevant mechanism",updated_at:"2026-11-02T00:00:00Z"}]);
       if(opts.method==="POST")return json([{claim_id:CLAIM,evidence_id:EVIDENCE}],201);
       if(opts.method==="DELETE")return json([{claim_id:CLAIM,evidence_id:EVIDENCE}]);
+    }
+    if(table==="priorly_reviewer_decisions"){
+      if(opts.method==="GET")return json(decisions);
+      if(opts.method==="POST"){
+        const payload=typeof opts.body==="string"?JSON.parse(opts.body):opts.body;
+        const rows=Array.isArray(payload)?payload:[payload];
+        const upserted=rows.map(row=>{
+          const i=decisions.findIndex(x=>x.project_id===row.project_id&&x.finding_type===row.finding_type&&x.finding_id===row.finding_id);
+          if(i>=0){decisions[i]={...decisions[i],...row};return decisions[i];}
+          decisions.push(row);return row;
+        });
+        return json(upserted,201);
+      }
+      if(opts.method==="PATCH")return json([{...d,...opts.body}]);
     }
     throw Error("unhandled mock URL "+url);
   };
@@ -120,15 +138,32 @@ test("Supabase auth delegates password storage, supports verification, verifies 
 test("project CRUD and claim evidence queries carry caller JWT; database RLS remains authoritative",async()=>{
   const {store,calls}=fixture(),db=store.forToken("access-a");
   assert.equal((await db.listProjects(UUID))[0].id,PROJECT);
-  assert.equal((await db.getProject(UUID,PROJECT)).title,"Priorly example");
+  const project=await db.getProject(UUID,PROJECT);
+  assert.equal(project.title,"Priorly example");
+  assert.equal(project.clientName,"Acme Corporation");
+  assert.equal(project.matterReference,"2026-IP-014");
+  assert.equal(project.matterType,"ip");
+  assert.equal(project.jurisdiction,"US (California)");
   assert.equal((await db.createProject(UUID,{title:"My startup"})).id,PROJECT);
   assert.equal((await db.updateProject(UUID,PROJECT,{title:"Updated company"})).title,"Updated company");
   const evidence=await db.listEvidence(UUID,PROJECT);
   assert.equal(evidence[0].id,EVIDENCE);
+  assert.equal(evidence[0].decision,"confirmed_overlap");
+  assert.equal(evidence[0].reviewerEmail,"a@example.com");
   assert.equal((await db.classifyEvidence(UUID,PROJECT,EVIDENCE,{classification:"overlap",note:"Compared"})).classification,"overlap");
   assert.equal((await db.importEvidence(UUID,PROJECT,{source:"Patent publication",title:"Patent document",url:"https://patents.google.com/patent/US1234567A"})).id,EVIDENCE);
   const claims=await db.listClaims(UUID,PROJECT);
   assert.equal(claims[0].links[0].evidenceId,EVIDENCE);
+  assert.equal(claims[0].decision,"unreviewed");
+  const decided=await db.setEvidenceDecision(UUID,"attorney@firm.test",PROJECT,EVIDENCE,{decision:"not_overlap",note:"Different input."});
+  assert.equal(decided.decision,"not_overlap");
+  assert.equal(decided.reviewerEmail,"attorney@firm.test");
+  assert.ok(decided.decidedAt);
+  const claimDecision=await db.setClaimDecision(UUID,"attorney@firm.test",PROJECT,CLAIM,{decision:"needs_research",note:"More prior art needed."});
+  assert.equal(claimDecision.decision,"needs_research");
+  assert.ok(calls.some(x=>x.path==="/rest/v1/priorly_reviewer_decisions"
+    &&x.query.includes("on_conflict=project_id,finding_type,finding_id")
+    &&x.body.finding_type==="claim"),"Decision upsert targets one finding.");
   const link=await db.linkClaimSource(UUID,PROJECT,CLAIM,{evidenceId:EVIDENCE,relation:"overlap",rationale:"Compared"});
   assert.equal(link.relation,"overlap");
   await db.unlinkClaimSource(UUID,PROJECT,CLAIM,EVIDENCE);
@@ -144,10 +179,14 @@ test("invalid ids and reviewer assignments cannot reach the database",async()=>{
   const {store,calls}=fixture(),db=store.forToken("access-a");
   await assert.rejects(db.getProject(UUID,"../../admin"),/Not found/);
   await assert.rejects(db.createProject(UUID,{title:"x"}),/Text length/);
+  await assert.rejects(db.createProject(UUID,{title:"Valid title",matterType:"criminal"}),/matter type/i);
   await assert.rejects(db.classifyEvidence(UUID,PROJECT,EVIDENCE,{classification:"patented"}),/Invalid review/);
+  await assert.rejects(db.setEvidenceDecision(UUID,"a@example.com",PROJECT,EVIDENCE,{decision:"patentable"}),/Invalid reviewer decision/);
+  await assert.rejects(db.setClaimDecision(UUID,"a@example.com",PROJECT,"not-a-uuid",{decision:"not_overlap"}),/Not found/);
   await assert.rejects(db.importEvidence(UUID,PROJECT,{source:"Patent publication",title:"invalid link",url:"javascript:alert(1)"}),/HTTPS/);
   const hit=calls.filter(x=>x.path.startsWith("/rest/v1/"));
   assert.ok(hit.every(x=>x.auth==="Bearer access-a"));
+  assert.ok(!hit.some(x=>x.path==="/rest/v1/priorly_reviewer_decisions"&&x.method==="POST"),"Rejected decisions never reach the database.");
 });
 test("managed session HTTP routes return verification pending and HttpOnly cookie pairs",async t=>{
   const {store}=fixture();

@@ -1,7 +1,7 @@
 // Managed Supabase Auth + PostgREST adapter. All rows are accessed with the
 // end user's verified bearer token; no service_role credentials are used.
 // Do not point this at another product's Auth instance in production.
-import { AppError } from "./storage.mjs";
+import { AppError, REVIEWER_DECISIONS, MATTER_TYPES } from "./storage.mjs";
 
 function fail(status, code, message) { return new AppError(status, code, message); }
 function text(value, max, min=0) {
@@ -10,6 +10,14 @@ function text(value, max, min=0) {
   if (s.length<min || s.length>max) throw fail(400,"INVALID_INPUT","Text length must be "+min+"–"+max+".");
   return s;
 }
+function matterFields(payload) {
+  const matterType=typeof payload.matterType==="string"?payload.matterType:"";
+  if(!MATTER_TYPES.includes(matterType))throw fail(400,"INVALID_INPUT","Invalid matter type.");
+  // An empty client_name is the explicit "Confidential / unnamed" record.
+  // A missing name is never invented here.
+  return {client_name:text(payload.clientName||"",200),matter_reference:text(payload.matterReference||"",120),
+    matter_type:matterType,jurisdiction:text(payload.jurisdiction||"",120)};
+}
 function projectFields(payload) {
   if (!payload || typeof payload!=="object" || Array.isArray(payload)) throw fail(400,"INVALID_INPUT","Expected project.");
   return {
@@ -17,7 +25,8 @@ function projectFields(payload) {
     problem:text(payload.problem||"",1800),
     solution:text(payload.solution||"",2400),
     audience:text(payload.audience||"",180),
-    keywords:text(payload.keywords||"",300)
+    keywords:text(payload.keywords||"",300),
+    ...matterFields(payload)
   };
 }
 function claimFields(payload) {
@@ -26,11 +35,23 @@ function claimFields(payload) {
 }
 function toProject(row) {
   return {id:row.id,title:row.title,problem:row.problem,solution:row.solution,audience:row.audience,
-    keywords:row.keywords,createdAt:row.created_at,updatedAt:row.updated_at};
+    keywords:row.keywords,clientName:row.client_name||"",matterReference:row.matter_reference||"",
+    matterType:row.matter_type||"",jurisdiction:row.jurisdiction||"",createdAt:row.created_at,updatedAt:row.updated_at};
 }
 function toEvidence(row) {
   return {id:row.id,source:row.source,sourceId:row.source_id,title:row.title,url:row.url,
     classification:row.classification,note:row.note,retrievedAt:row.retrieved_at,updatedAt:row.updated_at};
+}
+function attachDecision(row,decision) {
+  // Unreviewed stays distinct from any recorded human decision.
+  return {...row,decision:decision?.decision||"unreviewed",decisionNote:decision?.note||"",
+    reviewerEmail:decision?.reviewer_email||"",decidedAt:decision?.decided_at||null};
+}
+function decisionPayload(userId,reviewerEmail,body) {
+  if(!body||!REVIEWER_DECISIONS.includes(body.decision))throw fail(400,"INVALID_INPUT","Invalid reviewer decision.");
+  // The decision belongs to the reviewer who recorded it, never inferred.
+  return {decision:body.decision,note:text(body.note||"",1500),reviewer_id:userId,
+    reviewer_email:text(reviewerEmail||"",254),decided_at:new Date().toISOString()};
 }
 function toLink(row) {
   return {evidenceId:row.evidence_id,relation:row.relation,sourceExcerpt:row.source_excerpt,
@@ -176,6 +197,9 @@ export function createSupabaseStore({
       if(!x)throw fail(404,"NOT_FOUND","Technical claim not found.");
       return x;
     }
+    async function listDecisions(userId,projectId) {
+      return await dbRequest(token,"reviewer_decisions",{where:{project_id:projectId,owner_id:userId},limit:500});
+    }
     return {
       async listProjects(userId){
         return (await dbRequest(token,"projects",{where:{owner_id:userId},order:"updated_at.desc",limit:100})).map(toProject);
@@ -224,7 +248,20 @@ export function createSupabaseStore({
       },
       async listEvidence(userId,projectId){
         await getProject(userId,projectId);
-        return (await dbRequest(token,"evidence",{where:{project_id:projectId,owner_id:userId},order:"updated_at.desc",limit:250})).map(toEvidence);
+        const [rows,decisions]=await Promise.all([
+          dbRequest(token,"evidence",{where:{project_id:projectId,owner_id:userId},order:"updated_at.desc",limit:250}),
+          listDecisions(userId,projectId)
+        ]);
+        const byFinding=new Map(decisions.filter(x=>x.finding_type==="evidence").map(x=>[x.finding_id,x]));
+        return rows.map(row=>attachDecision(toEvidence(row),byFinding.get(row.id)));
+      },
+      async setEvidenceDecision(userId,reviewerEmail,projectId,evidenceId,body){
+        await getEvidence(userId,projectId,evidenceId);
+        const payload=decisionPayload(userId,reviewerEmail,body);
+        await request("/rest/v1/priorly_reviewer_decisions?on_conflict=project_id,finding_type,finding_id",
+          {method:"POST",token,body:{project_id:projectId,finding_type:"evidence",finding_id:evidenceId,...payload},
+            prefer:"resolution=merge-duplicates,return=representation"});
+        return (await this.listEvidence(userId,projectId)).find(x=>x.id===evidenceId);
       },
       async classifyEvidence(userId,projectId,evidenceId,body){
         await getEvidence(userId,projectId,evidenceId);
@@ -247,16 +284,26 @@ export function createSupabaseStore({
       },
       async listClaims(userId,projectId){
         await getProject(userId,projectId);
-        const [claims,links,evidence]=await Promise.all([
+        const [claims,links,evidence,decisions]=await Promise.all([
           dbRequest(token,"claims",{where:{project_id:projectId,owner_id:userId},order:"created_at.asc",limit:60}),
           dbRequest(token,"claim_sources",{where:{project_id:projectId,owner_id:userId},limit:500}),
-          dbRequest(token,"evidence",{where:{project_id:projectId,owner_id:userId},limit:250})
+          dbRequest(token,"evidence",{where:{project_id:projectId,owner_id:userId},limit:250}),
+          listDecisions(userId,projectId)
         ]);
         const look=new Map(evidence.map(x=>[x.id,x]));
-        return claims.map(c=>toClaim(c,links.filter(l=>l.claim_id===c.id).map(l=>{
+        const byFinding=new Map(decisions.filter(x=>x.finding_type==="claim").map(x=>[x.finding_id,x]));
+        return claims.map(c=>attachDecision(toClaim(c,links.filter(l=>l.claim_id===c.id).map(l=>{
           const source=look.get(l.evidence_id);
           return source?toLink({...l,title:source.title,url:source.url,source:source.source}):null;
-        }).filter(Boolean)));
+        }).filter(Boolean)),byFinding.get(c.id)));
+      },
+      async setClaimDecision(userId,reviewerEmail,projectId,claimId,body){
+        await getClaim(userId,projectId,claimId);
+        const payload=decisionPayload(userId,reviewerEmail,body);
+        await request("/rest/v1/priorly_reviewer_decisions?on_conflict=project_id,finding_type,finding_id",
+          {method:"POST",token,body:{project_id:projectId,finding_type:"claim",finding_id:claimId,...payload},
+            prefer:"resolution=merge-duplicates,return=representation"});
+        return (await this.listClaims(userId,projectId)).find(x=>x.id===claimId);
       },
       async createClaim(userId,projectId,body){
         await getProject(userId,projectId);

@@ -30,6 +30,15 @@ function setMode(next){
   byId("password").autocomplete=signUp?"new-password":"current-password";
   byId("auth-error").hidden=true;
 }
+function updateMatterSummary(p){
+  const bar=byId("matter-summary");
+  if(!p){bar.hidden=true;bar.textContent="";return;}
+  bar.hidden=false;
+  bar.textContent="MATTER — Client: "+(p.clientName||"Confidential / unnamed")
+    +" · Reference: "+(p.matterReference||"—")
+    +" · Type: "+(p.matterType?matterTypeLabel(p.matterType):"Not specified")
+    +" · Jurisdiction: "+(p.jurisdiction||"—");
+}
 function fillProject(p){
   selected=p?.id||null;
   byId("project-title").value=p?.title||"";
@@ -37,6 +46,14 @@ function fillProject(p){
   byId("project-solution").value=p?.solution||"";
   byId("project-audience").value=p?.audience||"";
   byId("project-keywords").value=p?.keywords||"";
+  const named=!!(p&&p.clientName);
+  byId("project-client-mode").value=named?"named":"confidential";
+  byId("project-client-name").value=named?p.clientName:"";
+  byId("project-client-name").disabled=!named;
+  byId("project-matter-type").value=p?.matterType||"";
+  byId("project-matter-reference").value=p?.matterReference||"";
+  byId("project-jurisdiction").value=p?.jurisdiction||"";
+  updateMatterSummary(selected?p:null);
   byId("delete-project").hidden=!selected;
   byId("run-research").disabled=!selected;
   byId("export-brief").disabled=!selected;
@@ -57,8 +74,13 @@ async function listProjects(preferred){
   await loadEvidence();
 }
 function bodyFromForm(){
+  const named=byId("project-client-mode").value==="named";
   return {title:byId("project-title").value,problem:byId("project-problem").value,
-    solution:byId("project-solution").value,audience:byId("project-audience").value,keywords:byId("project-keywords").value};
+    solution:byId("project-solution").value,audience:byId("project-audience").value,keywords:byId("project-keywords").value,
+    clientName:named?byId("project-client-name").value.trim():"",
+    matterReference:byId("project-matter-reference").value.trim(),
+    matterType:byId("project-matter-type").value,
+    jurisdiction:byId("project-jurisdiction").value.trim()};
 }
 async function loadEvidence(){
   evidence=[];runs=[];claims=[];
@@ -81,6 +103,22 @@ async function loadEvidence(){
   drawClaims();
 }
 const classes=["unreviewed","overlap","differentiated","needs-review","irrelevant"];
+const decisions=[{value:"unreviewed",label:"Unreviewed"},{value:"confirmed_overlap",label:"Confirmed overlap"},
+  {value:"not_overlap",label:"Not overlap"},{value:"needs_research",label:"Needs research"}];
+const matterTypes=[{value:"",label:"Not specified"},{value:"ip",label:"IP"},{value:"commercial",label:"Commercial"},
+  {value:"corporate",label:"Corporate"},{value:"other",label:"Other"}];
+const decisionLabel=v=>(decisions.find(x=>x.value===v)||decisions[0]).label;
+const matterTypeLabel=v=>(matterTypes.find(x=>x.value===v)||matterTypes[0]).label;
+function decisionHtml(kind,id,decision,decisionNote,reviewerEmail,decidedAt){
+  const attribution=decidedAt
+    ?"Recorded by "+esc(reviewerEmail||"an account whose email is unavailable")+" · "+esc(new Date(decidedAt).toLocaleString())
+    :"No reviewer decision recorded yet — this finding is unreviewed, not cleared.";
+  return '<div class="decision-row"><label>Reviewer decision</label><div class="decision-controls"><select aria-label="Reviewer decision" data-'+kind+'-decision="'+esc(id)+'">'
+    +decisions.map(x=>'<option value="'+x.value+'" '+(decision===x.value?"selected":"")+'>'+esc(x.label)+'</option>').join("")
+    +'</select><textarea data-'+kind+'-decision-note="'+esc(id)+'" maxlength="1500" rows="2" placeholder="Reviewer reasoning, recorded verbatim in the client file.">'+esc(decisionNote||"")+'</textarea>'
+    +'<button type="button" class="secondary" data-save-decision="'+esc(id)+'">Record decision</button></div>'
+    +'<p class="attribution">'+attribution+'</p><p class="attribution">A recorded decision states that a human reviewed this finding. It is not a legal conclusion on patentability, ownership or freedom to operate.</p></div>';
+}
 function drawEvidence(){
   const reviewed=evidence.filter(x=>x.classification!=="unreviewed").length;
   byId("research-status").textContent=evidence.length+" SOURCES / "+reviewed+" REVIEWED";
@@ -91,28 +129,50 @@ function drawEvidence(){
     byId("research-summary").textContent="Last research: "+new Date(runs[0].createdAt).toLocaleString()+" · "+(recent.papers?.length||0)+" publications · "+(recent.repos?.length||0)+" repositories. "+(errors.length?"Some providers failed: "+errors.join("; "):"All requested sources responded. Results still require review.");
     byId("research-summary").classList.toggle("warn",errors.length>0);
   }
-  byId("evidence-list").innerHTML=evidence.length?evidence.map(x=>'<article class="evidence-card" data-evidence="'+esc(x.id)+'"><div class="source-label">'+esc(x.source)+' · RETRIEVED '+esc(new Date(x.retrievedAt).toLocaleDateString())+'</div><a target="_blank" rel="noopener noreferrer" href="'+esc(safeUrl(x.url))+'">'+esc(x.title)+' ↗</a><div class="review-row"><select aria-label="Review classification" data-classification="'+esc(x.id)+'">'+classes.map(s=>'<option value="'+s+'" '+(x.classification===s?"selected":"")+'>'+esc(s.replace(/-/g," "))+'</option>').join("")+'</select><textarea data-note="'+esc(x.id)+' maxlength="1500" rows="2" placeholder="Evidence-specific human review notes…">'+esc(x.note)+'</textarea><button type="button" class="secondary" data-save-review="'+esc(x.id)+'">Save</button></div></article>').join(""):'<p class="small">No evidence collected. Run research to import linked publications and repositories.</p>';
+  byId("evidence-list").innerHTML=evidence.length?evidence.map(x=>'<article class="evidence-card" data-evidence="'+esc(x.id)+'"><div class="source-label">'+esc(x.source)+' · RETRIEVED '+esc(new Date(x.retrievedAt).toLocaleDateString())+'</div><a target="_blank" rel="noopener noreferrer" href="'+esc(safeUrl(x.url))+'">'+esc(x.title)+' ↗</a><div class="review-row"><select aria-label="Review classification" data-classification="'+esc(x.id)+'">'+classes.map(s=>'<option value="'+s+'" '+(x.classification===s?"selected":"")+'>'+esc(s.replace(/-/g," "))+'</option>').join("")+'</select><textarea data-note="'+esc(x.id)+' maxlength="1500" rows="2" placeholder="Evidence-specific human review notes…">'+esc(x.note)+'</textarea><button type="button" class="secondary" data-save-review="'+esc(x.id)+'">Save</button></div>'+decisionHtml("evidence",x.id,x.decision,x.decisionNote,x.reviewerEmail,x.decidedAt)+'</article>').join(""):'<p class="small">No evidence collected. Run research to import linked publications and repositories.</p>';
 }
 function download(name,content,type){
   const url=URL.createObjectURL(new Blob([content],{type}));
   const link=document.createElement("a");link.href=url;link.download=name;document.body.append(link);link.click();
   setTimeout(()=>{URL.revokeObjectURL(url);link.remove()},1000);
 }
+function decisionExportLine(x){
+  if(!x.decidedAt&&(!x.decision||x.decision==="unreviewed"))
+    return "No reviewer decision recorded (unreviewed).";
+  const decision="**"+decisionLabel(x.decision)+"**"+(x.decisionNote?" — "+x.decisionNote:"");
+  const attribution=x.decidedAt
+    ?"\n  - Recorded by "+(x.reviewerEmail||"account email unavailable")+" on "+new Date(x.decidedAt).toISOString()
+    :"\n  - No recording reviewer or timestamp present.";
+  return decision+attribution;
+}
 function exportBrief(){
   const p=projects.find(x=>x.id===selected);
   if(!p)return;
+  const total=evidence.length+claims.length;
+  const unreviewed=[...evidence,...claims].filter(x=>!x.decision||x.decision==="unreviewed").length;
   const md=[
-    "# "+p.title+" — Priorly evidence brief",
+    "# "+p.title+" — Priorly client-file brief",
     "", "**Generated:** "+new Date().toISOString(),"**Research runs:** "+runs.length,
+    "", "## Matter record",
+    "**Client:** "+(p.clientName||"Confidential / unnamed"),
+    "**Matter reference:** "+(p.matterReference||"Not provided"),
+    "**Matter type:** "+(p.matterType?matterTypeLabel(p.matterType):"Not specified"),
+    "**Jurisdiction:** "+(p.jurisdiction||"Not provided"),
+    "", "**Review status:** "+(total?(total-unreviewed)+" of "+total+" findings carry a recorded reviewer decision."
+      +""+(unreviewed?" **"+unreviewed+" finding(s) remain unreviewed — this document is NOT fully reviewed.**":"")
+      :"No findings yet; nothing has been reviewed."),
     "", "## Problem",p.problem||"Not provided","", "## Proposed approach",p.solution||"Not provided",
     "", "## Intended customers",p.audience||"Not provided","", "## Search keywords",p.keywords||"Not provided",
     "", "## Reviewed source evidence",
-    ...evidence.map(x=>"- **"+x.classification+"** "+x.title+" ("+x.source+") — "+x.url+"\n  - Reviewer notes: "+(x.note||"Not reviewed")),
+    ...evidence.map(x=>"- **"+x.classification+"** "+x.title+" ("+x.source+") — "+x.url+"\n  - Research notes: "+(x.note||"Not reviewed")+"\n  - Attorney decision: "+decisionExportLine(x)),
     "", "## Claim-to-evidence comparisons",
-    ...claims.flatMap(c=>["", "### "+c.description, c.mechanism||"Mechanism not documented", ...(c.links||[]).map(l=>"- "+l.relation+": "+l.title+" ("+l.url+") — Excerpt: "+(l.sourceExcerpt||"Not supplied")+" — Reviewer reasoning: "+(l.rationale||"Not supplied"))]),
+    ...claims.flatMap(c=>["", "### "+c.description, c.mechanism||"Mechanism not documented",
+      "- Attorney decision: "+decisionExportLine(c),
+      ...(c.links||[]).map(l=>"- "+l.relation+": "+l.title+" ("+l.url+") — Excerpt: "+(l.sourceExcerpt||"Not supplied")+" — Reviewer reasoning: "+(l.rationale||"Not supplied"))]),
     "", "## Important limitations",
     "Search hits do not establish novelty, patentability, ownership, freedom to operate or market viability.",
     "Review each source and have qualified counsel evaluate claim-level patent questions and title.",
+    "A reviewer decision records that a human examined the finding; it is never a legal conclusion.",
     ...(runs[0]?.result?.sourceErrors?.length?["", "**Source errors:** "+runs[0].result.sourceErrors.join("; ")]:[])
   ].join("\n");
   download("priorly-"+p.title.toLowerCase().replace(/[^a-z0-9]+/g,"-")+".md",md,"text/markdown;charset=utf-8");
@@ -123,7 +183,7 @@ function drawClaims(){
   byId("claim-list").innerHTML=claims.length?claims.map(c=>{
     const links=(c.links||[]).map(l=>'<div class="claim-link"><span>'+esc(l.relation.replace(/-/g," "))+'</span><a href="'+esc(safeUrl(l.url))+'" target="_blank" rel="noopener noreferrer">'+esc(l.title)+' ↗</a><p>'+esc(l.sourceExcerpt||"No excerpt recorded")+'</p><p>'+esc(l.rationale||"Reviewer reasoning not recorded")+'</p><button type="button" class="text-action" data-unlink="'+esc(c.id)+'" data-source-id="'+esc(l.evidenceId)+'">Remove comparison</button></div>').join("");
     const options=evidence.map(e=>'<option value="'+esc(e.id)+'">'+esc(e.source+" · "+e.title.slice(0,70))+'</option>').join("");
-    return '<article class="claim-item" data-claim="'+esc(c.id)+'"><div class="claim-heading"><div><strong>'+esc(c.description)+'</strong><p>'+esc(c.mechanism||"Technical mechanism not yet described.")+'</p></div><button class="danger" type="button" data-delete-claim="'+esc(c.id)+'">Delete</button></div>'+links+(evidence.length?'<div class="claim-link-form"><label>Attach and compare a source</label><select data-claim-source="'+esc(c.id)+'">'+options+'</select><select data-link-relation="'+esc(c.id)+'">'+linkRelations.map(x=>'<option value="'+x+'">'+esc(x.replace(/-/g," "))+'</option>').join("")+'</select><input data-link-excerpt="'+esc(c.id)+'" maxlength="1000" placeholder="Relevant passage, entered by reviewer"><textarea data-link-rationale="'+esc(c.id)+'" maxlength="1500" rows="2" placeholder="Why is this similar, different, or uncertain?"></textarea><button type="button" class="secondary" data-add-link="'+esc(c.id)+'">Save source comparison</button></div>':'<p class="small">Add a source in the research panel before mapping evidence to this claim.</p>')+'</article>';
+    return '<article class="claim-item" data-claim="'+esc(c.id)+'"><div class="claim-heading"><div><strong>'+esc(c.description)+'</strong><p>'+esc(c.mechanism||"Technical mechanism not yet described.")+'</p></div><button class="danger" type="button" data-delete-claim="'+esc(c.id)+'">Delete</button></div>'+links+decisionHtml("claim",c.id,c.decision,c.decisionNote,c.reviewerEmail,c.decidedAt)+(evidence.length?'<div class="claim-link-form"><label>Attach and compare a source</label><select data-claim-source="'+esc(c.id)+'">'+options+'</select><select data-link-relation="'+esc(c.id)+'">'+linkRelations.map(x=>'<option value="'+x+'">'+esc(x.replace(/-/g," "))+'</option>').join("")+'</select><input data-link-excerpt="'+esc(c.id)+'" maxlength="1000" placeholder="Relevant passage, entered by reviewer"><textarea data-link-rationale="'+esc(c.id)+'" maxlength="1500" rows="2" placeholder="Why is this similar, different, or uncertain?"></textarea><button type="button" class="secondary" data-add-link="'+esc(c.id)+'">Save source comparison</button></div>':'<p class="small">Add a source in the research panel before mapping evidence to this claim.</p>')+'</article>';
   }).join(""):'<p class="small">No technical claims yet. Add a focused claim to start comparing evidence.</p>';
 }
 byId("source-form").onsubmit=async event=>{
@@ -148,6 +208,18 @@ byId("claim-form").onsubmit=async event=>{
   }catch(e){toast(e.message)}finally{btn.disabled=!selected}
 };
 byId("claim-list").onclick=async event=>{
+  const decisionBtn=event.target.closest("[data-save-decision]");
+  if(decisionBtn){
+    const id=decisionBtn.dataset.saveDecision;
+    const choice=byId("claim-list").querySelector('[data-claim-decision="'+id+'"]');
+    const note=byId("claim-list").querySelector('[data-claim-decision-note="'+id+'"]');
+    decisionBtn.disabled=true;
+    try{
+      await api("/api/v1/projects/"+selected+"/claims/"+id+"/decision",{method:"PATCH",body:{decision:choice.value,note:note.value}});
+      await loadEvidence();toast("Reviewer decision recorded");
+    }catch(err){toast(err.message);decisionBtn.disabled=false}
+    return;
+  }
   const add=event.target.closest("[data-add-link]");
   const del=event.target.closest("[data-delete-claim]");
   const unlink=event.target.closest("[data-unlink]");
@@ -182,6 +254,11 @@ byId("logout").onclick=async()=>{
   try{await api("/api/v1/auth/logout",{method:"POST",body:{}});user=null;projects=[];selected=null;authView(false);setMode("login")}catch(err){toast(err.message)}
 };
 byId("new-project").onclick=()=>{selected=null;fillProject(null);loadEvidence()};
+byId("project-client-mode").onchange=()=>{
+  const named=byId("project-client-mode").value==="named";
+  byId("project-client-name").disabled=!named;
+  if(named)byId("project-client-name").focus();
+};
 byId("project-list").onclick=async e=>{
   const btn=e.target.closest("[data-project]");if(!btn)return;
   const p=projects.find(x=>x.id===btn.dataset.project);if(!p)return;
@@ -212,6 +289,18 @@ byId("run-research").onclick=async()=>{
 };
 byId("export-brief").onclick=exportBrief;
 byId("evidence-list").onclick=async e=>{
+  const decisionBtn=e.target.closest("[data-save-decision]");
+  if(decisionBtn){
+    const id=decisionBtn.dataset.saveDecision;
+    const choice=byId("evidence-list").querySelector('[data-evidence-decision="'+id+'"]');
+    const note=byId("evidence-list").querySelector('[data-evidence-decision-note="'+id+'"]');
+    decisionBtn.disabled=true;
+    try{
+      await api("/api/v1/projects/"+selected+"/evidence/"+id+"/decision",{method:"PATCH",body:{decision:choice.value,note:note.value}});
+      await loadEvidence();toast("Reviewer decision recorded");
+    }catch(err){toast(err.message);decisionBtn.disabled=false}
+    return;
+  }
   const btn=e.target.closest("[data-save-review]");if(!btn)return;
   const id=btn.dataset.saveReview;
   const category=byId("evidence-list").querySelector('[data-classification="'+id+'"]');
