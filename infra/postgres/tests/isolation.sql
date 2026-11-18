@@ -68,6 +68,7 @@ insert into public.priorly_projects(id,title)
   values ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','Project B');
 
 do $$
+declare affected integer;
 begin
   if (select count(*) from public.priorly_projects) <> 1 then
     raise exception 'user B can see user A projects';
