@@ -19,6 +19,10 @@ const string = (value, max = 2000) => {
 };
 const digest = value => createHash("sha256").update(value).digest("hex");
 const TTL = 7 * 24 * 60 * 60 * 1000;
+// Reviewer decisions are recorded by a human and never inferred. "unreviewed"
+// is the explicit default state: nothing has been looked at yet.
+export const REVIEWER_DECISIONS = ["unreviewed", "confirmed_overlap", "not_overlap", "needs_research"];
+export const MATTER_TYPES = ["", "ip", "commercial", "corporate", "other"];
 
 export function createStore({ path = ".data/priorly.sqlite", now = () => Date.now() } = {}) {
   if (path !== ":memory:") mkdirSync(dirname(resolve(path)), { recursive: true, mode: 0o700 });
@@ -30,7 +34,7 @@ export function createStore({ path = ".data/priorly.sqlite", now = () => Date.no
     "CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY,email TEXT NOT NULL UNIQUE,password_hash TEXT NOT NULL,created_at TEXT NOT NULL);",
     "CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,expires_at INTEGER NOT NULL);",
     "CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at);",
-    "CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY,owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,title TEXT NOT NULL,problem TEXT NOT NULL DEFAULT '',solution TEXT NOT NULL DEFAULT '',audience TEXT NOT NULL DEFAULT '',keywords TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL,updated_at TEXT NOT NULL);",
+    "CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY,owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,title TEXT NOT NULL,problem TEXT NOT NULL DEFAULT '',solution TEXT NOT NULL DEFAULT '',audience TEXT NOT NULL DEFAULT '',keywords TEXT NOT NULL DEFAULT '',client_name TEXT NOT NULL DEFAULT '',matter_reference TEXT NOT NULL DEFAULT '',matter_type TEXT NOT NULL DEFAULT '' CHECK (matter_type IN ('','ip','commercial','corporate','other')),jurisdiction TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL,updated_at TEXT NOT NULL);",
     "CREATE INDEX IF NOT EXISTS idx_projects_owner ON projects(owner_id,updated_at);",
     "CREATE TABLE IF NOT EXISTS research_runs (id TEXT PRIMARY KEY,project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,result_json TEXT NOT NULL,created_at TEXT NOT NULL);",
     "CREATE INDEX IF NOT EXISTS idx_runs_project ON research_runs(project_id,created_at);",
@@ -39,6 +43,21 @@ export function createStore({ path = ".data/priorly.sqlite", now = () => Date.no
     "CREATE TABLE IF NOT EXISTS claims (id TEXT PRIMARY KEY,project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,description TEXT NOT NULL,mechanism TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL,updated_at TEXT NOT NULL);",
     "CREATE INDEX IF NOT EXISTS idx_claims_project ON claims(project_id);",
     "CREATE TABLE IF NOT EXISTS claim_sources (claim_id TEXT NOT NULL REFERENCES claims(id) ON DELETE CASCADE,evidence_id TEXT NOT NULL REFERENCES evidence(id) ON DELETE CASCADE,relation TEXT NOT NULL,source_excerpt TEXT NOT NULL DEFAULT '',rationale TEXT NOT NULL DEFAULT '',updated_at TEXT NOT NULL,PRIMARY KEY(claim_id,evidence_id));"
+  ].join("\n"));
+  // In-place migration for databases created before the matter-record slice:
+  // fresh databases already get the columns from the CREATE TABLE above.
+  for (const [column, definition] of [
+    ["client_name", "TEXT NOT NULL DEFAULT ''"],
+    ["matter_reference", "TEXT NOT NULL DEFAULT ''"],
+    ["matter_type", "TEXT NOT NULL DEFAULT '' CHECK (matter_type IN ('','ip','commercial','corporate','other'))"],
+    ["jurisdiction", "TEXT NOT NULL DEFAULT ''"]
+  ]) {
+    if (!db.prepare("PRAGMA table_info(projects)").all().some(x => x.name === column))
+      db.exec("ALTER TABLE projects ADD COLUMN " + column + " " + definition);
+  }
+  db.exec([
+    "CREATE TABLE IF NOT EXISTS reviewer_decisions (project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,finding_type TEXT NOT NULL CHECK (finding_type IN ('evidence','claim')),finding_id TEXT NOT NULL,decision TEXT NOT NULL CHECK (decision IN ('unreviewed','confirmed_overlap','not_overlap','needs_research')),note TEXT NOT NULL DEFAULT '',reviewer_id TEXT NOT NULL,reviewer_email TEXT NOT NULL DEFAULT '',decided_at TEXT NOT NULL,UNIQUE(project_id,finding_type,finding_id));",
+    "CREATE INDEX IF NOT EXISTS idx_decisions_project ON reviewer_decisions(project_id);"
   ].join("\n"));
   const nowISO = () => new Date(now()).toISOString();
   function publicUser(row) {
@@ -93,19 +112,26 @@ export function createStore({ path = ".data/priorly.sqlite", now = () => Date.no
   }
   function formatProject(row) {
     return {id:row.id,title:row.title,problem:row.problem,solution:row.solution,audience:row.audience,
-      keywords:row.keywords,createdAt:row.created_at,updatedAt:row.updated_at};
+      keywords:row.keywords,clientName:row.client_name,matterReference:row.matter_reference,
+      matterType:row.matter_type,jurisdiction:row.jurisdiction,createdAt:row.created_at,updatedAt:row.updated_at};
+  }
+  function matterFields(body) {
+    const matterType=typeof body.matterType==="string"?body.matterType:"";
+    if(!MATTER_TYPES.includes(matterType))throw bad("Invalid matter type.");
+    return {clientName:string(body.clientName||"",200),matterReference:string(body.matterReference||"",120),
+      matterType,jurisdiction:string(body.jurisdiction||"",120)};
   }
   function fields(body) {
     if(!body||typeof body!=="object"||Array.isArray(body))throw bad("Expected an object.");
     const title=string(body.title,90);
     if(title.length<2)throw bad("Project title must contain at least 2 characters.");
     return {title,problem:string(body.problem||"",1800),solution:string(body.solution||"",2400),
-      audience:string(body.audience||"",180),keywords:string(body.keywords||"",300)};
+      audience:string(body.audience||"",180),keywords:string(body.keywords||"",300),...matterFields(body)};
   }
   function createProject(userId,body) {
     const p=fields(body), id=randomUUID(),createdAt=nowISO();
-    db.prepare("INSERT INTO projects (id,owner_id,title,problem,solution,audience,keywords,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)")
-      .run(id,userId,p.title,p.problem,p.solution,p.audience,p.keywords,createdAt,createdAt);
+    db.prepare("INSERT INTO projects (id,owner_id,title,problem,solution,audience,keywords,client_name,matter_reference,matter_type,jurisdiction,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      .run(id,userId,p.title,p.problem,p.solution,p.audience,p.keywords,p.clientName,p.matterReference,p.matterType,p.jurisdiction,createdAt,createdAt);
     return formatProject(requireProject(userId,id));
   }
   function listProjects(userId) {
@@ -115,8 +141,8 @@ export function createStore({ path = ".data/priorly.sqlite", now = () => Date.no
   function updateProject(userId,id,body) {
     requireProject(userId,id);
     const p=fields(body);
-    db.prepare("UPDATE projects SET title=?,problem=?,solution=?,audience=?,keywords=?,updated_at=? WHERE id=? AND owner_id=?")
-      .run(p.title,p.problem,p.solution,p.audience,p.keywords,nowISO(),id,userId);
+    db.prepare("UPDATE projects SET title=?,problem=?,solution=?,audience=?,keywords=?,client_name=?,matter_reference=?,matter_type=?,jurisdiction=?,updated_at=? WHERE id=? AND owner_id=?")
+      .run(p.title,p.problem,p.solution,p.audience,p.keywords,p.clientName,p.matterReference,p.matterType,p.jurisdiction,nowISO(),id,userId);
     return getProject(userId,id);
   }
   function deleteProject(userId,id) {
@@ -146,9 +172,37 @@ export function createStore({ path = ".data/priorly.sqlite", now = () => Date.no
   }
   function listEvidence(userId,projectId) {
     requireProject(userId,projectId);
-    return db.prepare("SELECT * FROM evidence WHERE project_id=? ORDER BY updated_at DESC LIMIT 250").all(projectId)
+    // A decision row exists only when a reviewer recorded one; unreviewed is
+    // therefore visibly distinct from a recorded "no overlap" finding.
+    return db.prepare("SELECT e.*,d.decision AS found_decision,d.note AS found_note,d.reviewer_email AS found_reviewer,d.decided_at AS found_at FROM evidence e LEFT JOIN reviewer_decisions d ON d.project_id=e.project_id AND d.finding_type='evidence' AND d.finding_id=e.id WHERE e.project_id=? ORDER BY e.updated_at DESC LIMIT 250").all(projectId)
       .map(row=>({id:row.id,source:row.source,sourceId:row.source_id,title:row.title,url:row.url,
-        classification:row.classification,note:row.note,retrievedAt:row.retrieved_at,updatedAt:row.updated_at}));
+        classification:row.classification,note:row.note,retrievedAt:row.retrieved_at,updatedAt:row.updated_at,
+        decision:row.found_decision||"unreviewed",decisionNote:row.found_note||"",
+        reviewerEmail:row.found_reviewer||"",decidedAt:row.found_at||null}));
+  }
+  function decisionInput(body) {
+    if(!body||typeof body!=="object")throw bad("Expected a decision object.");
+    if(!REVIEWER_DECISIONS.includes(body.decision))throw bad("Invalid reviewer decision.");
+    return {decision:body.decision,note:string(body.note||"",1500)};
+  }
+  function saveDecision(userId,reviewerEmail,projectId,findingType,findingId,body) {
+    requireProject(userId,projectId);
+    if(findingType!=="evidence"&&findingType!=="claim")throw new AppError(404,"NOT_FOUND","Finding not found.");
+    const found=findingType==="evidence"
+      ?db.prepare("SELECT id FROM evidence WHERE id=? AND project_id=?").get(findingId,projectId)
+      :db.prepare("SELECT id FROM claims WHERE id=? AND project_id=?").get(findingId,projectId);
+    if(!found)throw new AppError(404,"NOT_FOUND","Finding not found.");
+    const d=decisionInput(body);
+    db.prepare("INSERT INTO reviewer_decisions (project_id,finding_type,finding_id,decision,note,reviewer_id,reviewer_email,decided_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(project_id,finding_type,finding_id) DO UPDATE SET decision=excluded.decision,note=excluded.note,reviewer_id=excluded.reviewer_id,reviewer_email=excluded.reviewer_email,decided_at=excluded.decided_at")
+      .run(projectId,findingType,findingId,d.decision,d.note,userId,reviewerEmail||"",nowISO());
+  }
+  function setEvidenceDecision(userId,reviewerEmail,projectId,evidenceId,body) {
+    saveDecision(userId,reviewerEmail,projectId,"evidence",evidenceId,body);
+    return listEvidence(userId,projectId).find(x=>x.id===evidenceId);
+  }
+  function setClaimDecision(userId,reviewerEmail,projectId,claimId,body) {
+    saveDecision(userId,reviewerEmail,projectId,"claim",claimId,body);
+    return listClaims(userId,projectId).find(x=>x.id===claimId);
   }
   function classifyEvidence(userId,projectId,evidenceId,body) {
     requireProject(userId,projectId);
@@ -199,9 +253,11 @@ export function createStore({ path = ".data/priorly.sqlite", now = () => Date.no
   }
   function listClaims(userId,projectId) {
     requireProject(userId,projectId);
-    return db.prepare("SELECT * FROM claims WHERE project_id=? ORDER BY created_at ASC LIMIT 60").all(projectId)
+    return db.prepare("SELECT c.*,d.decision AS found_decision,d.note AS found_note,d.reviewer_email AS found_reviewer,d.decided_at AS found_at FROM claims c LEFT JOIN reviewer_decisions d ON d.project_id=c.project_id AND d.finding_type='claim' AND d.finding_id=c.id WHERE c.project_id=? ORDER BY c.created_at ASC LIMIT 60").all(projectId)
       .map(x=>({id:x.id,description:x.description,mechanism:x.mechanism,createdAt:x.created_at,
-        updatedAt:x.updated_at,links:listClaimLinks(userId,projectId,x.id)}));
+        updatedAt:x.updated_at,links:listClaimLinks(userId,projectId,x.id),
+        decision:x.found_decision||"unreviewed",decisionNote:x.found_note||"",
+        reviewerEmail:x.found_reviewer||"",decidedAt:x.found_at||null}));
   }
   function createClaim(userId,projectId,body) {
     requireProject(userId,projectId);
@@ -243,5 +299,6 @@ export function createStore({ path = ".data/priorly.sqlite", now = () => Date.no
     db.prepare("DELETE FROM users WHERE id=?").run(userId);
   }
   return {db,signUp,signIn,userForToken,signOut,createProject,listProjects,getProject,updateProject,
-    deleteProject,listRuns,storeRun,listEvidence,classifyEvidence,importEvidence,listClaims,createClaim,updateClaim,deleteClaim,listClaimLinks,linkClaimSource,unlinkClaimSource,deleteAccount};
+    deleteProject,listRuns,storeRun,listEvidence,classifyEvidence,importEvidence,setEvidenceDecision,
+    listClaims,createClaim,updateClaim,deleteClaim,setClaimDecision,listClaimLinks,linkClaimSource,unlinkClaimSource,deleteAccount};
 }

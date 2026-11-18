@@ -48,6 +48,61 @@ test("passwords, sessions, persistence and per-user evidence isolation",()=>{
     db.db.close();
   }finally{rmSync(root,{recursive:true,force:true})}
 });
+test("matter records and reviewer decisions are owner-scoped work product",()=>{
+  const db=createStore({path:":memory:"});
+  try{
+    const a=db.signUp("attorney@firm.test","strong-password-123"),b=db.signUp("other@firm.test","strong-password-456");
+    // Matter defaults are honest: nothing is invented for an unnamed client.
+    const plain=db.createProject(a.user.id,concept);
+    assert.equal(plain.clientName,"");
+    assert.equal(plain.matterReference,"");
+    assert.equal(plain.matterType,"");
+    assert.equal(plain.jurisdiction,"");
+    const matter={clientName:"Acme Corporation",matterReference:"2026-IP-014",matterType:"ip",jurisdiction:"US (California)"};
+    const p=db.createProject(a.user.id,{...concept,...matter});
+    assert.deepEqual({clientName:p.clientName,matterReference:p.matterReference,matterType:p.matterType,jurisdiction:p.jurisdiction},matter);
+    assert.throws(()=>db.createProject(a.user.id,{...concept,matterType:"patentable"}),/Invalid matter type/);
+    // PUT is a full replace: omitted matter fields reset honestly to defaults.
+    const reset=db.updateProject(a.user.id,p.id,{...concept});
+    assert.equal(reset.clientName,"");
+    assert.equal(reset.matterType,"");
+    const updated=db.updateProject(a.user.id,p.id,{...concept,...matter,matterType:"commercial",matterReference:"2026-C-9"});
+    assert.equal(updated.matterType,"commercial");
+    assert.equal(updated.matterReference,"2026-C-9");
+    assert.equal(updated.clientName,"Acme Corporation");
+    db.storeRun(a.user.id,p.id,result);
+    const ev=db.listEvidence(a.user.id,p.id)[0];
+    assert.equal(ev.decision,"unreviewed");
+    assert.equal(ev.reviewerEmail,"");
+    assert.equal(ev.decidedAt,null);
+    const claim=db.createClaim(a.user.id,p.id,{description:"Qualification-aware scheduling method",mechanism:"Uses auditable approvals"});
+    assert.equal(claim.decision,"unreviewed");
+    assert.throws(()=>db.setEvidenceDecision(a.user.id,"attorney@firm.test",p.id,ev.id,{decision:"patentable"}),/Invalid reviewer decision/);
+    assert.throws(()=>db.setEvidenceDecision(a.user.id,"attorney@firm.test",p.id,ev.id,{decision:"confirmed_overlap",note:"x".repeat(2000)}),/exceeds/);
+    assert.throws(()=>db.setEvidenceDecision(a.user.id,"attorney@firm.test",p.id,"missing-id",{decision:"confirmed_overlap"}),e=>e.status===404);
+    const decided=db.setEvidenceDecision(a.user.id,"attorney@firm.test",p.id,ev.id,{decision:"confirmed_overlap",note:"Column 3 discloses the same mechanism."});
+    assert.equal(decided.decision,"confirmed_overlap");
+    assert.equal(decided.reviewerEmail,"attorney@firm.test");
+    assert.equal(decided.decisionNote,"Column 3 discloses the same mechanism.");
+    assert.ok(decided.decidedAt);
+    const claimDecided=db.setClaimDecision(a.user.id,"attorney@firm.test",p.id,claim.id,{decision:"needs_research",note:"Publication ignores the constraint."});
+    assert.equal(claimDecided.decision,"needs_research");
+    assert.equal(claimDecided.reviewerEmail,"attorney@firm.test");
+    // Re-recording overwrites the decision with the new reviewer and time.
+    const revised=db.setEvidenceDecision(a.user.id,"attorney@firm.test",p.id,ev.id,{decision:"not_overlap",note:"Different scheduling input."});
+    assert.equal(revised.decision,"not_overlap");
+    assert.equal(revised.decisionNote,"Different scheduling input.");
+    // Cross-account denial: B cannot read matter details, set or see decisions.
+    assert.throws(()=>db.getProject(b.user.id,p.id),e=>e.status===404);
+    assert.throws(()=>db.updateProject(b.user.id,p.id,{...matter,title:"Stolen"}),e=>e.status===404);
+    assert.throws(()=>db.setEvidenceDecision(b.user.id,"other@firm.test",p.id,ev.id,{decision:"not_overlap"}),e=>e.status===404);
+    assert.throws(()=>db.setClaimDecision(b.user.id,"other@firm.test",p.id,claim.id,{decision:"not_overlap"}),e=>e.status===404);
+    assert.throws(()=>db.listEvidence(b.user.id,p.id),e=>e.status===404);
+    const untouched=db.listEvidence(a.user.id,p.id).find(x=>x.id===ev.id);
+    assert.equal(untouched.decision,"not_overlap");
+    assert.equal(untouched.reviewerEmail,"attorney@firm.test");
+  }finally{db.db.close()}
+});
 test("sessions expire and reviewer inputs are validated",()=>{
   let now=1000000;
   const db=createStore({path:":memory:",now:()=>now});
@@ -92,6 +147,28 @@ test("HTTP registration, authentication, source review and cross-account denials
   assert.equal((await request("/api/v1/projects/"+id+"/evidence/"+evId,"PATCH",{classification:"overlap",note:"No"},b)).status,404);
   r=await request("/api/v1/projects/"+id+"/evidence/"+evId,"PATCH",{classification:"overlap",note:"Compared"},a);
   assert.equal(r.status,200);assert.equal(r.data.evidence.classification,"overlap");
+  // Reviewer decisions: unauthenticated, validation, cross-account denial, then the owner records one.
+  r=await request("/api/v1/projects/"+id+"/evidence/"+evId+"/decision","PATCH",{decision:"confirmed_overlap"},a);
+  assert.equal(r.status,200);assert.equal(r.data.evidence.decision,"confirmed_overlap");
+  assert.equal(r.data.evidence.reviewerEmail,"a@example.org");
+  assert.ok(r.data.evidence.decidedAt);
+  assert.equal((await request("/api/v1/projects/"+id+"/evidence/"+evId+"/decision","PATCH",{decision:"confirmed_overlap"})).status,401);
+  assert.equal((await request("/api/v1/projects/"+id+"/evidence/"+evId+"/decision","PATCH",{decision:"not_overlap"},b)).status,404);
+  assert.equal((await request("/api/v1/projects/"+id+"/evidence/"+evId+"/decision","PATCH",{decision:"patentable"},a)).status,400);
+  r=await request("/api/v1/projects/"+id+"/claims","POST",{description:"Auditable approval scheduling method",mechanism:"Policy checks"},a);
+  assert.equal(r.status,201);
+  const claimId=r.data.claim.id;
+  assert.equal((await request("/api/v1/projects/"+id+"/claims/"+claimId+"/decision","PATCH",{decision:"needs_research"},b)).status,404);
+  r=await request("/api/v1/projects/"+id+"/claims/"+claimId+"/decision","PATCH",{decision:"not_overlap",note:"Mechanism differs."},a);
+  assert.equal(r.status,200);assert.equal(r.data.claim.decision,"not_overlap");
+  assert.equal(r.data.claim.reviewerEmail,"a@example.org");
+  // Matter details are only readable by the owner.
+  r=await request("/api/v1/projects/"+id,"GET",undefined,b);assert.equal(r.status,404);
+  r=await request("/api/v1/projects/"+id,"PUT",{...concept,clientName:"Acme Corp",matterReference:"M-1",matterType:"ip",jurisdiction:"US"},a);
+  assert.equal(r.status,200);
+  assert.equal(r.data.project.clientName,"Acme Corp");
+  assert.equal(r.data.project.matterType,"ip");
+  assert.equal((await request("/api/v1/projects/"+id,"PUT",{...concept,matterType:"criminal"},a)).status,400);
   r=await request("/api/v1/projects/"+id,"PUT",{...concept,title:"Updated title"},a);
   assert.equal(r.data.project.title,"Updated title");
   assert.equal((await request("/api/v1/projects","POST",concept,a,{Origin:"https://evil.example"})).status,403);

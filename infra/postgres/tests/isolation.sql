@@ -23,6 +23,34 @@ insert into public.priorly_claim_sources(claim_id,evidence_id,project_id,relatio
 insert into public.priorly_research_runs(project_id,result_json)
   values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','{"papers":[],"repos":[]}'::jsonb);
 
+-- Owner A records matter details and a reviewer decision on own findings.
+update public.priorly_projects
+  set client_name='Acme Corporation',matter_reference='2026-IP-014',matter_type='ip',jurisdiction='US (California)'
+  where id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+insert into public.priorly_reviewer_decisions(project_id,finding_type,finding_id,decision,note,reviewer_id,reviewer_email)
+  values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','evidence','eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+    'confirmed_overlap','Same mechanism disclosed in column 3.','11111111-1111-4111-8111-111111111111','attorney@firm.test');
+insert into public.priorly_reviewer_decisions(project_id,finding_type,finding_id,decision,note,reviewer_id,reviewer_email)
+  values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','claim','cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    'needs_research','Publication does not address the qualification constraint.','11111111-1111-4111-8111-111111111111','attorney@firm.test');
+do $$
+begin
+  if (select decision from public.priorly_reviewer_decisions
+      where finding_type='evidence' and finding_id='eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee') <> 'confirmed_overlap' then
+    raise exception 'owner cannot read back own reviewer decision';
+  end if;
+  if (select client_name from public.priorly_projects where id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa') <> 'Acme Corporation' then
+    raise exception 'owner cannot read back own matter record';
+  end if;
+  begin
+    insert into public.priorly_reviewer_decisions(project_id,finding_type,finding_id,decision,note,reviewer_id)
+      values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','evidence','eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeff',
+        'patentable','Never a legal conclusion.','11111111-1111-4111-8111-111111111111');
+    raise exception 'invalid reviewer decision value accepted';
+  exception when check_violation then null;
+  end;
+end $$;
+
 -- Owner A may NOT attach source from A's *other* project to claim in this project.
 do $$
 begin
@@ -40,6 +68,7 @@ insert into public.priorly_projects(id,title)
   values ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','Project B');
 
 do $$
+declare affected integer;
 begin
   if (select count(*) from public.priorly_projects) <> 1 then
     raise exception 'user B can see user A projects';
@@ -56,6 +85,25 @@ begin
   if (select count(*) from public.priorly_research_runs) <> 0 then
     raise exception 'user B can see user A research runs';
   end if;
+  if (select count(*) from public.priorly_reviewer_decisions) <> 0 then
+    raise exception 'user B can see user A reviewer decisions';
+  end if;
+  -- Cross-account denials: matter details and decisions of another owner.
+  update public.priorly_projects set client_name='Spoofed client',matter_reference='stolen'
+    where id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  get diagnostics affected = row_count;
+  if affected <> 0 then raise exception 'cross-owner matter update succeeded'; end if;
+  begin
+    insert into public.priorly_reviewer_decisions(project_id,finding_type,finding_id,decision,reviewer_id)
+      values('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','evidence','edededed-eded-4ded-8ded-edededededed',
+        'confirmed_overlap','22222222-2222-4222-8222-222222222222');
+    raise exception 'cross-owner decision insert unexpectedly succeeded';
+  exception when foreign_key_violation then null;
+  when insufficient_privilege then null;
+  end;
+  update public.priorly_reviewer_decisions set decision='not_overlap',note='Tampered';
+  get diagnostics affected = row_count;
+  if affected <> 0 then raise exception 'cross-owner decision update succeeded'; end if;
 end $$;
 
 -- RLS blocks attempts to impersonate another owner even when a supplied

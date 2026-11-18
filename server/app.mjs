@@ -180,6 +180,9 @@ export function createApp({
       if(parts.length===6&&parts[4]==="evidence"&&req.method==="PATCH"){
         return send(res,200,{evidence:await scoped.classifyEvidence(user.id,projectId,parts[5],await readBody(req))});
       }
+      if(parts.length===7&&parts[4]==="evidence"&&parts[6]==="decision"&&req.method==="PATCH"){
+        return send(res,200,{evidence:await scoped.setEvidenceDecision(user.id,user.email,projectId,parts[5],await readBody(req))});
+      }
       if(parts.length===5&&parts[4]==="evidence"&&req.method==="POST"){
         return send(res,201,{evidence:await scoped.importEvidence(user.id,projectId,await readBody(req))});
       }
@@ -190,6 +193,9 @@ export function createApp({
       if(parts.length===6&&parts[4]==="claims"){
         if(req.method==="PUT")return send(res,200,{claim:await scoped.updateClaim(user.id,projectId,parts[5],await readBody(req))});
         if(req.method==="DELETE"){await scoped.deleteClaim(user.id,projectId,parts[5]);return send(res,200,{ok:true});}
+      }
+      if(parts.length===7&&parts[4]==="claims"&&parts[6]==="decision"&&req.method==="PATCH"){
+        return send(res,200,{claim:await scoped.setClaimDecision(user.id,user.email,projectId,parts[5],await readBody(req))});
       }
       if(parts.length===7&&parts[4]==="claims"&&parts[6]==="sources"){
         if(req.method==="GET")return send(res,200,{links:await scoped.listClaimLinks(user.id,projectId,parts[5])});

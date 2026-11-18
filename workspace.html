@@ -36,8 +36,17 @@
           <label for="project-problem">The problem, as the founder describes it</label><textarea id="project-problem" maxlength="1800" rows="3" placeholder="Who has the problem? Why does it matter?"></textarea>
           <label for="project-solution">The proposed approach</label><textarea id="project-solution" maxlength="2400" rows="4" placeholder="The system, mechanism and what the founder believes is different."></textarea>
           <label for="project-keywords">Capabilities / search terms</label><input id="project-keywords" maxlength="300" placeholder="e.g. certification tracking, shift coverage, audit trail">
+          <div class="sub-form matter-fields">
+            <h3>Client matter</h3>
+            <p class="small">Recorded on the printed client-file document. Choose "Confidential / unnamed" when the client name is withheld; a name is never inferred.</p>
+            <div class="grid2"><div><label for="project-client-mode">Client</label><select id="project-client-mode"><option value="confidential">Confidential / unnamed</option><option value="named">Named client</option></select><input id="project-client-name" maxlength="200" placeholder="Client name as the firm records it" disabled></div>
+            <div><label for="project-matter-type">Matter type</label><select id="project-matter-type"><option value="">Not specified</option><option value="ip">IP</option><option value="commercial">Commercial</option><option value="corporate">Corporate</option><option value="other">Other</option></select></div></div>
+            <div class="grid2"><div><label for="project-matter-reference">Matter reference</label><input id="project-matter-reference" maxlength="120" placeholder="The firm's own matter reference"></div>
+            <div><label for="project-jurisdiction">Jurisdiction</label><input id="project-jurisdiction" maxlength="120" placeholder="e.g. US (California)"></div></div>
+          </div>
           <div class="form-actions"><button class="primary" type="submit" id="save-project">Save matter</button><button type="button" id="delete-project" class="danger" hidden>Delete matter</button></div>
         </form>
+        <div id="matter-summary" class="matter-bar" hidden></div>
       </div>
       <div class="surface evidence-panel">
         <div class="panel-heading"><span>RETRIEVED SOURCES &amp; REVIEW</span><span id="research-status">NO RESEARCH YET</span></div>
